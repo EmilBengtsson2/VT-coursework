@@ -1,0 +1,491 @@
+I have mainly changed three files; CPU.java, ConfigStore.java, and ConfigKey.java. I added an entry to the 
+ConfigStore that determines whether the registers should be able to be both read and written to in the 
+same clock cycle (that entry has a corresponding ConfigKey). I also modified the step() method in CPU.java 
+to check whether any register has been written to in the WB stage. If that is the case, and the settings 
+do not allow for simultaneous reading and writing of registers, all the registers in the register file 
+will be blocked from being read that cycle and if an instruction tries to read a register a structural stall will be introduced. Additionally, I changed some of the gui classes to show structural stalls in the graphical interface. I also made The classes that handle floating point instructions implement a dummy interface "FPType.java", so I can distinguish them from normal instructions.
+
+Look below to see exactly which changes have been made.
+
+Output from "git diff" in the edumips64 directory (The lines with a plus indicate an addition in the code, and the lines with a minus indicate a removal in the code. For nice coloring and stuff, try it yourself):
+
+diff --git a/src/main/java/org/edumips64/core/BUILD b/src/main/java/org/edumips64/core/BUILD
+index 63c378f..3438510 100644
+--- a/src/main/java/org/edumips64/core/BUILD
++++ b/src/main/java/org/edumips64/core/BUILD
+@@ -17,6 +17,7 @@ java_library(
+         "//src/main/java/org/edumips64/core/is:exceptions",
+         "//src/main/java/org/edumips64/core/is:instructioninterface",
+         "//src/main/java/org/edumips64/utils:config",
++        "//src/main/java/org/edumips64/core/fpu:fptype",
+     ],
+ )
+ 
+diff --git a/src/main/java/org/edumips64/core/CPU.java b/src/main/java/org/edumips64/core/CPU.java
+index a8adddd..255615d 100644
+--- a/src/main/java/org/edumips64/core/CPU.java
++++ b/src/main/java/org/edumips64/core/CPU.java
+@@ -79,7 +79,7 @@ public class CPU {
+   private ConfigStore config;
+ 
+   /** Statistics */
+-  private int cycles, instructions, RAWStalls, WAWStalls, dividerStalls, funcUnitStalls, memoryStalls, exStalls;
++  private int cycles, instructions, RAWStalls, WAWStalls, dividerStalls, funcUnitStalls, memoryStalls, exStalls, registerStalls;
+ 
+   /** BUBBLE */
+   private InstructionInterface bubble;
+@@ -311,6 +311,10 @@ public class CPU {
+     return memoryStalls;
+   }
+ 
++  public int getStructuralStallsRegister() {
++    return registerStalls;
++  }
++
+   /** Returns the number of Structural Stalls (EX not available) that happened inside the pipeline
+    * @return an integer
+    */
+@@ -375,14 +379,49 @@ public class CPU {
+       throw new StoppedCPUException();
+     }
+ 
++    //variables for blocking
++    boolean gprBlocked, fprBlocked;
++    gprBlocked = fprBlocked = false;
++
+     try {
+       // Stages are executed from the last one (WB) to the first one (IF). After the
+       // logic for the given stage is executed, the instruction is moved to the next
+       // stage (except for WB, where the instruction is discarded.
+       logger.info("\n\nStarting cycle " + ++cycles + "\n---------------------------------------------");
+ 
++      int[] writeSemaphores = new int[32];
++      int[] writeSemaphoresFP = new int[32];
++      for (int i = 0; i < 32; i++) {
++        writeSemaphores[i] = gpr[i].getWriteSemaphore();
++        writeSemaphoresFP[i] = fpr[i].getWriteSemaphore();
++      }
+       // WB: Write-back stage.
+       stepWB();
++      for (int i = 0; i < 32; i++) {
++        if (writeSemaphores[i] != gpr[i].getWriteSemaphore()) {
++          gprBlocked = true;
++          break;
++        }
++        if (writeSemaphoresFP[i] != fpr[i].getWriteSemaphore()) {
++          fprBlocked = true;
++          break;
++        }
++      }
++
++      gprBlocked = gprBlocked && !config.getBoolean(ConfigKey.SIMULTANEOUS_READING_AND_WRITING);
++      fprBlocked = fprBlocked && !config.getBoolean(ConfigKey.SIMULTANEOUS_READING_AND_WRITING);
++
++      //Stop read access to register and registerFP files (allowed again after end of cycle)
++      if (gprBlocked) {
++        for (int i = 0; i < 32; i++) {
++          gpr[i].incrWriteSemaphore();
++        }
++      }
++      if (fprBlocked) {
++        for (int i = 0; i < 32; i++) {
++          fpr[i].incrWriteSemaphore();
++        }
++      }
+ 
+       // MEM: Memory access stage.
+       stepMEM();
+@@ -396,8 +435,15 @@ public class CPU {
+       // ID: instruction decode / register fetch stage. The RAW exception is handled
+       // via a return value instead of an exception because throwing exceptions proved
+       // to be a bottleneck in large programs. (See docs for Instruction.ID()).
+-      boolean rawException = stepID();
+-      if (rawException) {
++      boolean exception = stepID();
++      if (exception) {
++        if (!(pipe.ID() instanceof FPType)) {
++          if (gprBlocked)
++            throw new RegisterAccessException();
++        } else {
++          if (fprBlocked)
++            throw new RegisterAccessException();
++        }
+         throw new RAWException();
+       }
+ 
+@@ -429,6 +475,11 @@ public class CPU {
+       old_pc.writeDoubleWord((pc.getValue()));
+       pc.writeDoubleWord((pc.getValue()) + 4);
+ 
++    } catch (RegisterAccessException ex) {
++      if (currentPipeStage == Pipeline.Stage.ID) {
++        pipe.setEX(bubble);
++      }
++      registerStalls++;
+     } catch (RAWException ex) {
+       if (currentPipeStage == Pipeline.Stage.ID) {
+         pipe.setEX(bubble);
+@@ -472,6 +523,17 @@ public class CPU {
+ 
+     } finally {
+       logger.info("End of cycle " + cycles + "\n---------------------------------------------\n" + pipeLineString() + "\n");
++      //allow access to register and registerFP files again
++      if (gprBlocked) {
++        for (int i = 0; i < 32; i++) {
++          gpr[i].decrWriteSemaphore();
++        }
++      }
++      if (fprBlocked) {
++        for (int i = 0; i < 32; i++) {
++          fpr[i].decrWriteSemaphore();
++        }
++      }
+     }
+   }
+ 
+@@ -694,6 +756,7 @@ public class CPU {
+     funcUnitStalls = 0;
+     exStalls = 0;
+     memoryStalls = 0;
++    registerStalls = 0;
+ 
+     // Reset registers.
+     for (int i = 0; i < 32; i++) {
+diff --git a/src/main/java/org/edumips64/core/fpu/BUILD b/src/main/java/org/edumips64/core/fpu/BUILD
+index 762ebb6..1df9526 100644
+--- a/src/main/java/org/edumips64/core/fpu/BUILD
++++ b/src/main/java/org/edumips64/core/fpu/BUILD
+@@ -54,3 +54,12 @@ java_library(
+         "//src/main/java/org/edumips64/core:exceptions",
+     ],
+ )
++
++java_library(
++    name = "fptype",
++    srcs = [
++        "FPType.java",
++    ],
++    deps = [
++    ],
++)
+\ No newline at end of file
+diff --git a/src/main/java/org/edumips64/core/is/BUILD b/src/main/java/org/edumips64/core/is/BUILD
+index fdd40d7..b8bb76e 100644
+--- a/src/main/java/org/edumips64/core/is/BUILD
++++ b/src/main/java/org/edumips64/core/is/BUILD
+@@ -27,6 +27,7 @@ java_library(
+         "//src/main/java/org/edumips64/core/fpu:registerfp",
+         "//src/main/java/org/edumips64/utils:currentlocale",
+         "//src/main/java/org/edumips64/utils/io",  # SYSCALL
++        "//src/main/java/org/edumips64/core/fpu:fptype",
+     ],
+ )
+ 
+diff --git a/src/main/java/org/edumips64/core/is/FPArithmeticInstructions.java b/src/main/java/org/edumips64/core/is/FPArithmeticInstructions.java
+index e03d5f0..5f12643 100644
+--- a/src/main/java/org/edumips64/core/is/FPArithmeticInstructions.java
++++ b/src/main/java/org/edumips64/core/is/FPArithmeticInstructions.java
+@@ -33,7 +33,7 @@ import org.edumips64.core.fpu.*;
+  *
+  * @author Trubia Massimo
+  */
+-public abstract class FPArithmeticInstructions extends ComputationalInstructions {
++public abstract class FPArithmeticInstructions extends ComputationalInstructions implements FPType {
+   final static int FD_FIELD = 0;
+   final static int FS_FIELD = 1;
+   final static int FT_FIELD = 2;
+diff --git a/src/main/java/org/edumips64/core/is/FPC_cond_DInstructions.java b/src/main/java/org/edumips64/core/is/FPC_cond_DInstructions.java
+index f57b327..880e4ef 100644
+--- a/src/main/java/org/edumips64/core/is/FPC_cond_DInstructions.java
++++ b/src/main/java/org/edumips64/core/is/FPC_cond_DInstructions.java
+@@ -34,7 +34,7 @@ import java.math.*;
+  *
+  * @author Trubia Massimo
+  */
+-public abstract class FPC_cond_DInstructions extends ComputationalInstructions {
++public abstract class FPC_cond_DInstructions extends ComputationalInstructions implements FPType {
+   final static int CC_FIELD = 0;
+   final static int FS_FIELD = 1;
+   final static int FT_FIELD = 2;
+diff --git a/src/main/java/org/edumips64/core/is/FPConditionalCC_DMoveInstructions.java b/src/main/java/org/edumips64/core/is/FPConditionalCC_DMoveInstructions.java
+index 27a00d6..10f0f85 100644
+--- a/src/main/java/org/edumips64/core/is/FPConditionalCC_DMoveInstructions.java
++++ b/src/main/java/org/edumips64/core/is/FPConditionalCC_DMoveInstructions.java
+@@ -26,13 +26,14 @@ package org.edumips64.core.is;
+ import org.edumips64.core.*;
+ import org.edumips64.core.fpu.FPInvalidOperationException;
+ import org.edumips64.core.fpu.RegisterFP;
++import org.edumips64.core.fpu.FPType;
+ 
+ /**This is the base class of the conditional move to and from instructions
+  *
+  * @author Trubia Massimo
+  */
+ 
+-public abstract class FPConditionalCC_DMoveInstructions extends ComputationalInstructions {
++public abstract class FPConditionalCC_DMoveInstructions extends ComputationalInstructions implements FPType {
+   final static int FD_FIELD = 0;
+   final static int FD_FIELD_INIT = 21;
+   final static int FD_FIELD_LENGTH = 5;
+diff --git a/src/main/java/org/edumips64/core/is/FPConditionalZerosMoveInstructions.java b/src/main/java/org/edumips64/core/is/FPConditionalZerosMoveInstructions.java
+index ad59738..7b0912c 100644
+--- a/src/main/java/org/edumips64/core/is/FPConditionalZerosMoveInstructions.java
++++ b/src/main/java/org/edumips64/core/is/FPConditionalZerosMoveInstructions.java
+@@ -26,13 +26,14 @@ package org.edumips64.core.is;
+ import org.edumips64.core.*;
+ import org.edumips64.core.fpu.FPInvalidOperationException;
+ import org.edumips64.core.fpu.RegisterFP;
++import org.edumips64.core.fpu.FPType;
+ 
+ /**This is the base class of the move to and from instructions
+  *
+  * @author Trubia Massimo
+  */
+ 
+-public abstract class FPConditionalZerosMoveInstructions extends ComputationalInstructions {
++public abstract class FPConditionalZerosMoveInstructions extends ComputationalInstructions implements FPType {
+   final static int FD_FIELD = 0;
+   final static int FD_FIELD_INIT = 21;
+   final static int FD_FIELD_LENGTH = 5;
+diff --git a/src/main/java/org/edumips64/core/is/FPFormattedOperandMoveInstructions.java b/src/main/java/org/edumips64/core/is/FPFormattedOperandMoveInstructions.java
+index 3d655ca..43a8864 100644
+--- a/src/main/java/org/edumips64/core/is/FPFormattedOperandMoveInstructions.java
++++ b/src/main/java/org/edumips64/core/is/FPFormattedOperandMoveInstructions.java
+@@ -31,7 +31,7 @@ import org.edumips64.core.fpu.*;
+  * @author Trubia Massimo
+  */
+ 
+-public abstract class FPFormattedOperandMoveInstructions extends ComputationalInstructions {
++public abstract class FPFormattedOperandMoveInstructions extends ComputationalInstructions implements FPType {
+   final static int FD_FIELD = 0;
+   final static int FD_FIELD_INIT = 21;
+   final static int FD_FIELD_LENGTH = 5;
+diff --git a/src/main/java/org/edumips64/core/is/FPMoveToAndFromInstructions.java b/src/main/java/org/edumips64/core/is/FPMoveToAndFromInstructions.java
+index 498795c..5b6f118 100644
+--- a/src/main/java/org/edumips64/core/is/FPMoveToAndFromInstructions.java
++++ b/src/main/java/org/edumips64/core/is/FPMoveToAndFromInstructions.java
+@@ -25,13 +25,14 @@
+ package org.edumips64.core.is;
+ import org.edumips64.core.*;
+ import org.edumips64.core.fpu.FPInvalidOperationException;
++import org.edumips64.core.fpu.FPType;
+ 
+ /**This is the base class of the move to and from instructions
+  *
+  * @author Trubia Massimo
+  */
+ 
+-public abstract class FPMoveToAndFromInstructions extends ComputationalInstructions {
++public abstract class FPMoveToAndFromInstructions extends ComputationalInstructions implements FPType {
+   final static int RT_FIELD = 0;
+   final static int RT_FIELD_INIT = 11;
+   final static int RT_FIELD_LENGTH = 5;
+diff --git a/src/main/java/org/edumips64/ui/swing/GUICycles.java b/src/main/java/org/edumips64/ui/swing/GUICycles.java
+index 5451cd1..653e8a0 100644
+--- a/src/main/java/org/edumips64/ui/swing/GUICycles.java
++++ b/src/main/java/org/edumips64/ui/swing/GUICycles.java
+@@ -215,7 +215,7 @@ public class GUICycles extends GUIComponent {
+         return new Color(config.getInt(ConfigKey.FP_DIVIDER_COLOR));
+       } else if (st.equals("RAW")) {
+         return new Color(config.getInt(ConfigKey.ID_COLOR));
+-      } else if (st.equals("WAW") || st.equals("StDiv") || st.equals("StEx") || st.equals("StFun")) {
++      } else if (st.equals("WAW") || st.equals("StDiv") || st.equals("StEx") || st.equals("StFun") || st.equals("StReg")) {
+         return new Color(config.getInt(ConfigKey.ID_COLOR));
+       } else if (st.equals(" ")) {
+         if (pre.equals("IF")) {
+diff --git a/src/main/java/org/edumips64/ui/swing/GUIStatistics.java b/src/main/java/org/edumips64/ui/swing/GUIStatistics.java
+index f7ce0b3..a4cfce5 100644
+--- a/src/main/java/org/edumips64/ui/swing/GUIStatistics.java
++++ b/src/main/java/org/edumips64/ui/swing/GUIStatistics.java
+@@ -41,7 +41,7 @@ public class GUIStatistics extends GUIComponent {
+ 
+   StatPanel statPanel;
+   JScrollPane jsp;
+-  private int nCycles, nInstructions, rawStalls, codeSize, WAWStalls, dividerStalls, memoryStalls;
++  private int nCycles, nInstructions, rawStalls, codeSize, WAWStalls, dividerStalls, memoryStalls, registerStalls;
+   private float cpi;
+ 
+   GUIStatistics(CPU cpu, Memory memory, ConfigStore config) {
+@@ -58,7 +58,7 @@ public class GUIStatistics extends GUIComponent {
+   class StatPanel extends JPanel {
+     JList statList;
+     String [] statistics = {" Execution", " 0 Cycles", " 0 Instructions", " ", " Stalls", " 0 RAW Stalls", " 0 WAW Stalls",
+-                            " 0 WAR Stalls", " 0 Structural Stalls(Divider not available)", "0 Structural Stalls (Memory not available)", " 0 Branch Taken Stalls", " 0 Branch Misprediction Stalls",
++                            " 0 WAR Stalls", "0 Structural Stalls(Register not available)", " 0 Structural Stalls(Divider not available)", "0 Structural Stalls (Memory not available)", " 0 Branch Taken Stalls", " 0 Branch Misprediction Stalls",
+                             " Code Size", " 0 Bytes", "FPU info", "FCSR", "FCSRGroups", "FCSRMnemonics", "FCSRValues"
+                            };
+     StatPanel() {
+@@ -90,6 +90,7 @@ public class GUIStatistics extends GUIComponent {
+     WAWStalls = cpu.getWAWStalls();
+     dividerStalls = cpu.getStructuralStallsDivider();
+     memoryStalls = cpu.getStructuralStallsMemory();
++    registerStalls = cpu.getStructuralStallsRegister();
+   }
+ 
+   public void draw() {
+@@ -162,38 +163,41 @@ public class GUIStatistics extends GUIComponent {
+         label.setText(" 0 " + CurrentLocale.getString("WARS"));
+         return label;
+       case 8:
+-        label.setText(" " + dividerStalls + " " + CurrentLocale.getString("STRUCTS_DIVNOTAVAILABLE"));
++        label.setText(" " + registerStalls + " " + CurrentLocale.getString("REGS"));
+         return label;
+       case 9:
+-        label.setText(" " + memoryStalls  + " " + CurrentLocale.getString("STRUCTS_MEMNOTAVAILABLE"));
++        label.setText(" " + dividerStalls + " " + CurrentLocale.getString("STRUCTS_DIVNOTAVAILABLE"));
+         return label;
+       case 10:
+-        label.setText(" 0 " + CurrentLocale.getString("BTS"));
++        label.setText(" " + memoryStalls  + " " + CurrentLocale.getString("STRUCTS_MEMNOTAVAILABLE"));
+         return label;
+       case 11:
+-        label.setText(" 0 " + CurrentLocale.getString("BMS"));
++        label.setText(" 0 " + CurrentLocale.getString("BTS"));
+         return label;
+       case 12:
++        label.setText(" 0 " + CurrentLocale.getString("BMS"));
++        return label;
++      case 13:
+         label.setText(" " + CurrentLocale.getString("CSIZE"));
+         label.setForeground(Color.red);
+         return label;
+-      case 13:
++      case 14:
+         label.setText(" " + codeSize + " " + CurrentLocale.getString("BYTES"));
+         return label;
+-      case 14:
++      case 15:
+         label.setText(" " + CurrentLocale.getString("FPUINFO"));
+         label.setForeground(Color.red);
+         return label;
+-      case 15:
++      case 16:
+         label.setText(" " + CurrentLocale.getString("FPUFCSR"));
+         return label;
+-      case 16:
++      case 17:
+         label.setText(" " + "    FCC       Cause EnablFlag RM");
+         return label;
+-      case 17:
++      case 18:
+         label.setText(" " + "7654321 0      VZOUIVZOUIVZOUI");
+         return label;
+-      case 18:
++      case 19:
+         label.setText(" " + cpu.getFCSR().getBinString());
+         return label;
+       }
+diff --git a/src/main/java/org/edumips64/utils/ConfigKey.java b/src/main/java/org/edumips64/utils/ConfigKey.java
+index eaa9428..c0a9317 100644
+--- a/src/main/java/org/edumips64/utils/ConfigKey.java
++++ b/src/main/java/org/edumips64/utils/ConfigKey.java
+@@ -23,6 +23,7 @@ public enum ConfigKey {
+     WB_COLOR("WBColor"),
+     RAW_COLOR("RAWColor"),
+     SAME_IF_COLOR("SAMEIFColor"),
++    SIMULTANEOUS_READING_AND_WRITING("SIMULTANEOUS_READING_AND_WRITING"),
+     FORWARDING("forwarding"),
+     WARNINGS("warnings"),
+     VERBOSE("verbose"),
+diff --git a/src/main/java/org/edumips64/utils/ConfigStore.java b/src/main/java/org/edumips64/utils/ConfigStore.java
+index d15766a..f7045fd 100644
+--- a/src/main/java/org/edumips64/utils/ConfigStore.java
++++ b/src/main/java/org/edumips64/utils/ConfigStore.java
+@@ -58,6 +58,7 @@ public abstract class ConfigStore {
+     ConfigStore.defaults.put(ConfigKey.SAME_IF_COLOR, -6908236);        // Color(150, 150, 180).getRGB());
+ 
+     // Simulation parameters.
++    ConfigStore.defaults.put(ConfigKey.SIMULTANEOUS_READING_AND_WRITING, false);
+     ConfigStore.defaults.put(ConfigKey.FORWARDING, false);
+     ConfigStore.defaults.put(ConfigKey.WARNINGS, false);
+     ConfigStore.defaults.put(ConfigKey.VERBOSE, true);
+diff --git a/src/main/java/org/edumips64/utils/CurrentLocale.java b/src/main/java/org/edumips64/utils/CurrentLocale.java
+index c214ad1..e73233b 100644
+--- a/src/main/java/org/edumips64/utils/CurrentLocale.java
++++ b/src/main/java/org/edumips64/utils/CurrentLocale.java
+@@ -140,6 +140,7 @@ public class CurrentLocale {
+     en.put("STALLS", "Stalls");
+     en.put("WAWS", "WAW Stalls");
+     en.put("WARS", "WAR Stalls");
++    en.put("REGS", "Structural Stalls (Register not available)");
+     en.put("STRUCTS_DIVNOTAVAILABLE", "Structural Stalls (Divider not available)");
+     en.put("STRUCTS_MEMNOTAVAILABLE", "Structural Stalls (Memory not available)");
+     en.put("BTS", "Branch Taken Stalls");
+diff --git a/src/main/java/org/edumips64/utils/CycleBuilder.java b/src/main/java/org/edumips64/utils/CycleBuilder.java
+index 5a7d80e..ce8ff08 100644
+--- a/src/main/java/org/edumips64/utils/CycleBuilder.java
++++ b/src/main/java/org/edumips64/utils/CycleBuilder.java
+@@ -54,7 +54,7 @@ public class CycleBuilder {
+   // Stalls counters.
+   // These are updated at the end of the step() cycle because they hold the value of the stalls for the *last* cycle,
+   // so when step() is called again the new stall values can be compared with them to detect stalls.
+-  private int oldRAWStalls, oldWAWStalls, oldStructStallsEX, oldStructStallsDivider, oldStructStallsFuncUnit;
++  private int oldRAWStalls, oldWAWStalls, oldStructStallsEX, oldStructStallsDivider, oldStructStallsFuncUnit, oldRegisterStalls;
+   // Used to understand if the EX instruction is in structural stall (memory).
+   private int oldMemoryStalls;
+   // Groups five stalls (EXNotAvailable, FuncUnitNotAvailable,
+@@ -115,14 +115,15 @@ public class CycleBuilder {
+ 
+       // Pre-compute EX stage stalls
+       boolean RAWStallOccurred = (oldRAWStalls != cpu.getRAWStalls());
++      boolean registerStallOccurred = (oldRegisterStalls != cpu.getStructuralStallsRegister());
+       boolean WAWStallOccurred = (oldWAWStalls != cpu.getWAWStalls());
+       boolean structStallEXOccurred = (oldStructStallsEX != cpu.getStructuralStallsEX());
+       boolean structStallDividerOccurred = (oldStructStallsDivider != cpu.getStructuralStallsDivider());
+       boolean structStallsFuncUnitOccurred = (oldStructStallsFuncUnit != cpu.getStructuralStallsFuncUnit());
+-      boolean inputStallOccurred = (oldInputStructuralStalls != cpu.getStructuralStallsDivider() + cpu.getStructuralStallsEX() + cpu.getStructuralStallsFuncUnit() + cpu.getRAWStalls() + cpu.getWAWStalls());
++      boolean inputStallOccurred = (oldInputStructuralStalls != cpu.getStructuralStallsRegister() + cpu.getStructuralStallsDivider() + cpu.getStructuralStallsEX() + cpu.getStructuralStallsFuncUnit() + cpu.getRAWStalls() + cpu.getWAWStalls());
+ 
+       // Check if something fishy is going on.
+-      if (inputStallOccurred && !(RAWStallOccurred || WAWStallOccurred || structStallDividerOccurred || structStallEXOccurred || structStallsFuncUnitOccurred)) {
++      if (inputStallOccurred && !(registerStallOccurred || RAWStallOccurred || WAWStallOccurred || structStallDividerOccurred || structStallEXOccurred || structStallsFuncUnitOccurred)) {
+         logger.severe("Something fishy going on with the instruction that has to go into ID");
+       }
+ 
+@@ -178,6 +179,10 @@ public class CycleBuilder {
+         if (structStallsFuncUnitOccurred) {
+           el.addState("StFun");
+         }
++
++        if (registerStallOccurred) {
++          el.addState("StReg");
++        }
+       }
+ 
+       // EX
+@@ -189,6 +194,7 @@ public class CycleBuilder {
+         if (el.getLastState().equals("ID") ||
+             el.getLastState().equals("RAW") ||
+             el.getLastState().equals("WAW") ||
++            el.getLastState().equals("StReg") ||
+             el.getLastState().equals("StEx")) {
+           el.addState("EX");
+           exTagged = true;
+@@ -325,10 +331,11 @@ public class CycleBuilder {
+   private void updateStalls() {
+     oldMemoryStalls = cpu.getMemoryStalls();
+     oldRAWStalls = cpu.getRAWStalls();
++    oldRegisterStalls = cpu.getStructuralStallsRegister();
+     oldWAWStalls = cpu.getWAWStalls();
+     oldStructStallsEX = cpu.getStructuralStallsEX();
+     oldStructStallsDivider = cpu.getStructuralStallsDivider();
+     oldStructStallsFuncUnit = cpu.getStructuralStallsFuncUnit();
+-    oldInputStructuralStalls = oldStructStallsDivider + oldStructStallsEX + oldStructStallsFuncUnit + oldRAWStalls + oldWAWStalls;
++    oldInputStructuralStalls = oldStructStallsDivider + oldStructStallsEX + oldStructStallsFuncUnit + oldRAWStalls + oldRegisterStalls + oldWAWStalls;
+   }
+ }
+diff --git a/src/main/java/org/edumips64/utils/CycleElement.java b/src/main/java/org/edumips64/utils/CycleElement.java
+index 4a6267f..01a6bf4 100644
+--- a/src/main/java/org/edumips64/utils/CycleElement.java
++++ b/src/main/java/org/edumips64/utils/CycleElement.java
+@@ -142,8 +142,8 @@ public class CycleElement {
+   static {
+     allowedTransitions = new HashMap<>();
+     allowedTransitions.put("IF", new HashSet<>(Arrays.asList("ID", " ")));
+-    allowedTransitions.put("ID", new HashSet<>(Arrays.asList("ID", "EX", "RAW", "WAW", "DIV", "StDiv", "StEx", "StFun", "A1", "M1")));
+-    allowedTransitions.put("RAW", new HashSet<>(Arrays.asList("RAW", "WAW", "EX", "M1", "A1")));
++    allowedTransitions.put("ID", new HashSet<>(Arrays.asList("ID", "EX", "RAW", "WAW", "DIV", "StDiv", "StEx", "StFun", "A1", "M1", "StReg")));
++    allowedTransitions.put("RAW", new HashSet<>(Arrays.asList("RAW", "WAW", "EX", "M1", "A1", "StReg")));
+     allowedTransitions.put("WAW", new HashSet<>(Arrays.asList("WAW", "EX", "M1", "A1")));
+ 
+     allowedTransitions.put("EX", new HashSet<>(Arrays.asList("MEM", "Str")));

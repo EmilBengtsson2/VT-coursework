@@ -1,0 +1,299 @@
+<!DOCTYPE html>
+
+<head>
+  <meta charset="utf-8" />
+  <title>Artificial Intelligence, Fall 2018</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+  <!-- Latest compiled and minified CSS -->
+  <link href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-BVYiiSIFeK1dGmJRAkycuHAHRg32OmUcww7on3RYdg4Va+PmSTsz/K68vbdEjh4u" crossorigin="anonymous">
+
+  <!-- Optional theme -->
+  <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/css/bootstrap-theme.min.css" integrity="sha384-rHyoN1iRsVXV4nD0JutlnGaslCJuC7uwjduW9SVrLvRYooPp2bWYgmgJQIXwl/Sp" crossorigin="anonymous">
+
+  <base href="http://courses.cs.vt.edu/cs4804/Fall18/">
+
+  <link rel="stylesheet" href="./style.css">
+
+  <script>
+    (function(i, s, o, g, r, a, m) {
+      i['GoogleAnalyticsObject'] = r;
+      i[r] = i[r] || function() {
+        (i[r].q = i[r].q || []).push(arguments)
+      }, i[r].l = 1 * new Date();
+      a = s.createElement(o),
+        m = s.getElementsByTagName(o)[0];
+      a.async = 1;
+      a.src = g;
+      m.parentNode.insertBefore(a, m)
+    })(window, document, 'script', '//www.google-analytics.com/analytics.js', 'ga');
+
+    ga('create', 'UA-574893-4', 'auto');
+    ga('send', 'pageview');
+  </script>
+</head>
+
+<body>
+
+  <div class="content container-fluid" style="max-width: 1024px;">
+
+    <div class="jumbotron">
+      <h1>Artificial Intelligence</h1>
+
+      <p>CS4804 Fall 2018</p>
+    </div>
+
+    <div class="row">
+      <div class="col-sm-12">
+        <h4>Description</h4>
+
+        <p>This course will cover the foundations of modern artificial intelligence (AI) and many of the key ideas that have resonated throughout its history. It will focus on concepts that are not only important in the space of AI but are also practically
+          useful in modern applications. We will practice effective methods of reasoning about AI problems, which will generalize beyond the specific topics we study in class.</p>
+
+        <p>Class meets Monday, Wednesday, and Friday from 1:25 PM to 2:15 PM in Surge 104b.</p>
+
+        <ul class="list-group">
+          <li class="list-group-item"><b>Instructor:</b><br/>
+            <a href="http://berthuang.com">Bert Huang</a>, Assistant Professor of Computer Science<br/> Office hours: Mondays 3:00 PM&ndash;5:00 PM, Torgersen Hall 3160L<br/>
+            <a href="mailto:bhuang@vt.edu">bhuang@vt.edu</a></li>
+          <li class="list-group-item"><b>Teaching Assistants:</b><br/>
+
+            <a href="http://people.cs.vt.edu/~elaheh/">Elaheh Raisi</a><br/> Office hours: Tuesday 3–5 pm, Wednesday 3–5 pm, Kelly Hall 219<br/>
+            <a href="mailto:elaheh@vt.edu">elaheh@vt.edu</a><br/>
+            <br/>
+
+            <a href="">Shakiba Davari</a><br/>Office hours: Thursday 2–4 pm, Friday 9–11 am, CS Lounge (McBryde 1st Floor)<br/>
+            <a href="mailto:sdavari@vt.edu">sdavari@vt.edu</a><br/>
+          </li>
+          <li class="list-group-item"><b>Office Hour Chart</b><br/>
+            <table class="table">
+              <thead>
+                <tr>
+                  <td>Mon.</td>
+                  <td>Tue.</td>
+                  <td>Wed.</td>
+                  <td>Thu.</td>
+                  <td>Fri.</td>
+                </tr>
+              </thead>
+              <tr>
+
+                <td>
+                  1:25 PM &ndash; 2:15 PM
+                  <br />Class, Surge 104b
+                  <br />
+                  <br /> 3 PM &ndash; 5 PM
+                  <br />Bert, Torg 3160L.
+                  <br />
+                </td>
+                <td>
+                  3 PM &ndash; 5 PM
+                <br />Elaheh, Kelly Hall 219
+                </td>
+                <td>
+                  1:25 PM &ndash; 2:15 PM
+                  <br />Class, Surge 104b
+                  <br />
+                  <br /> 3 PM &ndash; 5 PM
+                  <br /> Elaheh, Kelly Hall 219
+                </td>
+                <td>
+                  2 PM &ndash; 4 PM
+                  <br />Shakiba, CS Lounge
+                </td>
+                <td>
+                  9 AM &ndash; 11 AM
+                  <br />Shakiba, CS Lounge
+                  <br />
+                  <br />
+                  1:25 PM &ndash; 2:15 PM
+                  <br />Class, Surge 104b
+                  <br />
+                </td>
+              </tr>
+            </table>
+        </ul>
+
+        <p>The course homepage (this page) is at <a href="http://courses.cs.vt.edu/cs4804/Fall18/">
+                  http://courses.cs.vt.edu/cs4804/Fall18/</a>.</p>
+
+        <p>The course Canvas site is at <a href="https://canvas.vt.edu/courses/78079">
+                  https://canvas.vt.edu/courses/78079</a> and should be visible to all users with a Virginia Tech login.</p>
+
+        <h4 id="learningobjectives">Learning Objectives</h4> Upon successful completion of this course, students will be able to
+
+        <ul>
+          <li>understand and analyze classical artificial intelligence algorithms;</li>
+          <li>have a well-informed perspective on what is possible with modern AI methods and what will be possible in the future;</li>
+          <li>design and build nontrivial artificial intelligence agents capable of seeking goals and strategizing against adversaries and uncertainty;</li>
+          <li>form expert opinions on the benefits, dangers, and ethics of artificial intelligence; and</li>
+          <li>have the foundation necessary to understand and implement cutting-edge AI concepts that are poised to significantly change the world in the near future.</li>
+        </ul>
+
+        <h4 id="topics">Topics</h4>
+
+        <ul>
+          <li>Search: heuristic search, A*, adversarial search and game playing</li>
+          <li>Probability and learning: reasoning under uncertainty, reinforcement learning, temporal modeling</li>
+          <li>Logic and knowledge: propositional, first-order, reasoning, planning, knowledge representation</li>
+          <li>Applications: self-driving cars, assistants, personalized health, and more.</li>
+        </ul>
+
+        <h4 id="prerequisites">Prerequisites</h4>
+
+        <p>The only official prerequisite is CS 3114 (Undergraduate Data Structures and Algorithms). You should be comfortable with discrete mathematics, basic probability and statistics, basic logic, computational complexity, data structures, and algorithm
+          analysis. The homework assignments will include programming portions using Python. </p>
+
+        <p>Please speak with the instructor if you are concerned about your background.
+
+          <h4 id="accessibility">Accessibility</h4>
+
+          <p>If any student needs special accommodations because of any disabilities, please contact the instructor during the first week of classes. Such students are encouraged to work with
+            <a href="https://www.ssd.vt.edu">
+          The Office of Services for
+      Students with Disabilities</a> to help coordinate accessibity arrangements.</p>
+
+          <h4 id="readingandmaterials">Reading and materials</h4>
+
+          <ul>
+            <li>Russell and Norvig, Artificial Intelligence, A Modern Approach. <b>Third Edition</b>. ISBN: 0136042597 <a href="http://aima.cs.berkeley.edu">http://aima.cs.berkeley.edu</a>.</li>
+            <li>Additional materials may be provided electronically, including readings, video lectures, and other media.</li>
+          </ul>
+
+          <p>Slides and other materials will be available in at <a href="./slide_pdfs/">http://courses.cs.vt.edu/cs4804/Fall18/slide_pdfs/</a>.</p>
+
+          <h4 id="gradingbreakdown">Grading breakdown</h4>
+
+          <ul>
+            <li>5%: Homework 0</li>
+            <li>60%: Five homework assignments with written and programming components (12% each)</li>
+            <li>10%: Midterm exam</li>
+            <li>25%: Final exam</li>
+          </ul>
+
+          <h4>Schedule</h4>
+
+          <div>
+            <embed width=600 height=750 type='text/html' style='overflow: hidden' src="https://docs.google.com/spreadsheets/d/e/2PACX-1vSL0Op99A2LVY2zGMEcCIIWUdJQhKHeBtivkpn2hz5DJFvOlK7yPcwROLUm-q6bYzvJ5Zz3lAGn9XZy/pubhtml?gid=0&single=true">
+          </div>
+          <p>(Or click <a href="https://docs.google.com/spreadsheets/d/e/2PACX-1vSL0Op99A2LVY2zGMEcCIIWUdJQhKHeBtivkpn2hz5DJFvOlK7yPcwROLUm-q6bYzvJ5Zz3lAGn9XZy/pubhtml?gid=0&single=true">here</a> if the embedding is not working.)</p>
+      </div>
+
+      <h4 id="homework">Homework</h4>
+
+      <ul>
+        <li>Each homework assignment will include written and programing portions.</li>
+        <li>Both written and programming assignments will be submitted electronically. Submission instructions will be posted with each assignment on Canvas.</li>
+        <li>Programming assignments will be in Python and will be based on the UC Berkeley Pacman homework assignments viewable at <a href="http://ai.berkeley.edu/project_overview.html">http://ai.berkeley.edu/project_overview.html</a>.</li>
+        <li>These programming assignments, while fun, only cover a portion of the topics we will study, so they will be supplemented with written problems.</li>
+      </ul>
+
+      <h4 id="exams">Exams</h4>
+
+      <p>Exams for this course will be open-book and notes. They will be designed with the intent of testing your ability to understand and apply the concepts we learn about in class, not whether you can memorize them. You will be asked to sign a pledge
+        that you do not use communication tools like email, chat, or social media during the exams.</p>
+
+      <p>The midterm exam will be held in class on 10/12/18. The final exam will be a take-home exam.</p>
+
+      <h4 id="regradingrequests">Regrading requests</h4>
+
+      <p>Requests for regrading due to grading errors must be submitted in writing to the TA within one week of the release of grades. </p>
+
+      <h4 id="latehomeworkpolicy">Late homework policy</h4>
+
+      <p>Homework submitted late without permission will be penalized according to the following formula: (Penalized score) = (Your raw score) * (1 - 0.1 * (# of days past deadline))</p>
+
+      <p>This formula will apply for up to three days, after which the homework will not be accepted and you will receive a grade of zero. Avoid invoking these penalties by starting early and seeking extra help. </p>
+
+      <h4 id="gradingscale">Grading scale</h4>
+
+      <p>Based on the grading breakdown above, each student's final grade for the course will be determined by the final percentage of points earned. The grade ranges are as follows: </p>
+
+      <table>
+        <tr>
+          <td><b>A</b></td>
+          <td>93.3%&ndash;100%</td>
+          <td><b>A-</b></td>
+          <td>90.0%&ndash;93.3%</td>
+          <td><b>B+</b></td>
+          <td>86.6%&ndash;90.0%</td>
+          <td><b>B</b></td>
+          <td>83.3%&ndash;86.6%</td>
+          <td><b>B-</b></td>
+          <td>80.0%&ndash;83.3%</td>
+        </tr>
+        <tr>
+          <td><b>C+</b></td>
+          <td>76.6%&ndash;80.0%</td>
+          <td><b>C</b></td>
+          <td>73.3%&ndash;76.6%</td>
+          <td><b>C-</b></td>
+          <td>70.0%&ndash;73.3%</td>
+          <td><b>D+</b></td>
+          <td>66.6%&ndash;70.0%</td>
+          <td><b>D</b></td>
+          <td>63.3%&ndash;66.6%</td>
+          <td><b>D-</b></td>
+          <td>60.0%&ndash;63.3%</td>
+          <td></td>
+          <td></td>
+          <td><b>F</b></td>
+          <td>00.0%&ndash;60.0%</td>
+        </tr>
+      </table>
+
+      <h4 id="academicintegrity">Academic integrity</h4>
+
+      <p>The Undergraduate Honor Code pledge that each member of the university community agrees to abide by states: "As a Hokie, I will conduct myself with honor and integrity at all times. I will not lie, cheat, or steal, nor will I accept the actions
+        of those who do."</p>
+
+      <p>Students enrolled in this course are responsible for abiding by the Honor Code. A student who has doubts about how the Honor Code applies to any assignment is responsible for obtaining specific guidance from the course instructor before submitting
+        the assignment for evaluation. Ignorance of the rules does not exclude any member of the University community from the requirements and expectations of the Honor Code. For additional information about the Honor Code, please visit:
+        <a href="https://www.honorsystem.vt.edu/">https://www.honorsystem.vt.edu/</a></p>
+
+      <p>This course will have a zero-tolerance philosophy regarding plagiarism or other forms of cheating. Your homework assignments must be your own work, and any external source of code, ideas, or language must be cited to give credit to the original
+        source. I will not hesitate to report incidents of academic dishonesty to the Office of the Undergraduate Honor System.</p>
+
+      <h4 id="principles">Principles of Community</h4>
+
+      <p>Because the course will include in-class discussions, we will adhere to Virginia Tech's <a href="http://inclusive.vt.edu/vtpoc0.html">Principles of Community</a>. The first two principles are most relevant:</p>
+
+      <ul>
+        <li>We affirm the inherent dignity and value of every person and strive to maintain a climate for work and learning based on mutual respect and understanding.</li>
+        <li>We affirm the right of each person to express thoughts and opinions freely. We encourage open expression within a climate of civility, sensitivity, and mutual respect.</li>
+      </ul>
+
+      <p>The remaining principles are also important and we will take them seriously as a class.</p>
+
+    </div>
+
+  </div>
+
+  <footer class="footer">
+    <div style="height: 500px;">
+    </div>
+    <div class="container-fluid">
+      <div class="row">
+        <div class="col-sm-12">
+
+          <p class="text-muted">Disclaimer: This syllabus details the plans for the course, which are subject to change. I will make sure any changes are clearly announced and will always be intended for your benefit.</p>
+
+          <p class="text-muted">For visitors outside the course: you are welcome to use the course materials for educational purposes. Do not sell any of this content.</p>
+
+        </div>
+      </div>
+    </div>
+
+  </footer>
+
+  <!-- Placed at the end of the document so the pages load faster -->
+  <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.2.1/jquery.min.js"></script>
+  <!-- IE10 viewport hack for Surface/desktop Windows 8 bug -->
+  <script src="https://getbootstrap.com/assets/js/ie10-viewport-bug-workaround.js"></script>
+  <!-- Latest compiled and minified JavaScript -->
+  <script src="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/js/bootstrap.min.js" integrity="sha384-Tc5IQib027qvyjSMfHjOMaLkfuWVxZxUPnCJA7l2mCWNIpG9mGCD8wGNIcPD7Txa" crossorigin="anonymous">
+  </script>
+
+</body>
+
+</html>

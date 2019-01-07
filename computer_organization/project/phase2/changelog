@@ -1,0 +1,470 @@
+I have mainly changed three files; CPU.java, ConfigStore.java, and ConfigKey.java. I added an entry to the 
+ConfigStore that determines which branch prediction technique is used (that entry has a corresponding ConfigKey).
+CPU.java was where I made most of the changes: I changed the stepIF() method to check whether there is a jump instruction
+in the ID stage and, if that is the case, do some predictions depending on which branch prediction technique is being used.
+I added some code for branch prediction in the step() method, both between the stepID() and stepIF() calls,
+and where the JumpException is caught. I also added some methods and variables at the top of the class for
+the two dynamic branch prediction techniques.
+Additionally I changed some of the gui classes to show the branch stalls in the statistics window, and I made
+FlowControlInstructions.java implement a dummy interface "JumpInstruction.java" so I can use Bazel to build my project
+(and also so I can distinguish the branch instructions from other instructions).
+
+Look below to see exactly which changes have been made.
+
+Output from "git diff" in the edumips64 directory (The lines with a plus indicate an addition in the code,
+and the lines with a minus indicate a removal in the code. For nice coloring and stuff, try it yourself):
+
+diff --git a/src/main/java/org/edumips64/core/BUILD b/src/main/java/org/edumips64/core/BUILD
+index 63c378f..417c4ed 100644
+--- a/src/main/java/org/edumips64/core/BUILD
++++ b/src/main/java/org/edumips64/core/BUILD
+@@ -16,6 +16,7 @@ java_library(
+         "//src/main/java/org/edumips64/core/fpu:registerfp",
+         "//src/main/java/org/edumips64/core/is:exceptions",
+         "//src/main/java/org/edumips64/core/is:instructioninterface",
++        "//src/main/java/org/edumips64/core/is:jumpinstruction",
+         "//src/main/java/org/edumips64/utils:config",
+     ],
+ )
+diff --git a/src/main/java/org/edumips64/core/CPU.java b/src/main/java/org/edumips64/core/CPU.java
+index a8adddd..c2ff179 100644
+--- a/src/main/java/org/edumips64/core/CPU.java
++++ b/src/main/java/org/edumips64/core/CPU.java
+@@ -69,6 +69,83 @@ public class CPU {
+   public enum CPUStatus {READY, RUNNING, STOPPING, HALTED}
+   private CPUStatus status;
+ 
++  /** Branch Prediction */
++  private boolean wrongPC;
++  private final int NBR_OF_PREDICTION_BITS = 200;
++  private HashMap<String, boolean[]> predictionBuffer;
++  private LinkedList pb_entries;
++  private int[] lastGlobalEntries;
++  private int pb_max_entries;
++  private boolean in_jump;
++
++  private String getBufferKey(long key) {
++    return "" + key;
++    //TODO: remove
++    /*int predictionStrategy = config.getInt(ConfigKey.BRANCH_PREDICTION);
++    if (predictionStrategy == 4) {
++      return "" + key;
++    } else {
++      return "" + lastGlobalEntries[0] + lastGlobalEntries[1] + "$" + key;
++    }*/
++  }
++
++  private void updatePredictionBuffer(String key, boolean branchTaken) {
++    int predictionStrategy = config.getInt(ConfigKey.BRANCH_PREDICTION);
++    // Update buffer
++    boolean[] entries = predictionBuffer.get(key);
++    if (entries == null) {
++      // If buffer is full, remove oldest entry
++      if (predictionBuffer.size() == pb_max_entries)
++        predictionBuffer.remove(pb_entries.pop());
++      // create new entry
++      pb_entries.add(key);
++      if (predictionStrategy == 4) {
++        entries = new boolean[2];
++        entries[0] = branchTaken;
++      } else {
++        int currentPredictor = lastGlobalEntries[0] + 2 * lastGlobalEntries[1];
++        entries = new boolean[4];
++        entries[currentPredictor] = branchTaken;
++      }
++    } else {
++      if (predictionStrategy == 4) {
++        if (entries[0] == branchTaken) {
++          entries[1] = branchTaken;
++        } else {
++          entries[0] = branchTaken;
++        }
++      } else {
++        int currentPredictor = lastGlobalEntries[0] + 2 * lastGlobalEntries[1];
++        entries[currentPredictor] = branchTaken;
++      }
++    }
++    // update/add entry
++    predictionBuffer.put(key, entries);
++    // Update lastGlobalEntries
++    if (predictionStrategy == 5) {
++      lastGlobalEntries[1] = lastGlobalEntries[0];
++      lastGlobalEntries[0] = (branchTaken ? 1 : 0);
++    }
++  }
++
++  private boolean branchPrediction(String key) {
++    int predictionStrategy = config.getInt(ConfigKey.BRANCH_PREDICTION);
++    if (predictionStrategy == 4) {
++      boolean[] entries = predictionBuffer.get(key);
++      if (entries != null) {
++        return entries[1];
++      }
++      return false;
++    } else {
++      boolean[] entries = predictionBuffer.get(key);
++      if (entries != null) {
++        int currentPredictor = lastGlobalEntries[0] + 2 * lastGlobalEntries[1];
++        return entries[currentPredictor];
++      }
++      return false;
++    }
++  }
++
+   /** CPU pipeline, each stage contains an Instruction object. */
+   private Pipeline pipe;
+ 
+@@ -80,6 +157,7 @@ public class CPU {
+ 
+   /** Statistics */
+   private int cycles, instructions, RAWStalls, WAWStalls, dividerStalls, funcUnitStalls, memoryStalls, exStalls;
++  private int branchStalls, mispredictionStalls, takenStalls;
+ 
+   /** BUBBLE */
+   private InstructionInterface bubble;
+@@ -99,6 +177,19 @@ public class CPU {
+     this.config = config;
+     this.bubble = bubble;
+ 
++    in_jump = false;
++    wrongPC = false;
++
++    int predictionStrategy = config.getInt(ConfigKey.BRANCH_PREDICTION);
++    if (predictionStrategy == 4) {
++      pb_max_entries = NBR_OF_PREDICTION_BITS / 2;
++    } else if (predictionStrategy == 5) {
++      pb_max_entries = NBR_OF_PREDICTION_BITS / 4;
++    }
++    predictionBuffer = new HashMap<String, boolean[]>();
++    pb_entries = new LinkedList<String>();
++    lastGlobalEntries = new int[2];
++
+     logger.info("Creating the CPU...");
+     cycles = 0;
+     setStatus(CPUStatus.READY);
+@@ -318,6 +409,27 @@ public class CPU {
+     return exStalls;
+   }
+ 
++  /** Returns the number of branch related stalls
++  * @return an integer
++  */
++  public int getBranchStalls() {
++    return branchStalls;
++  }
++
++  /** Returns the number of branch misprediction stalls
++  * @return an integer
++  */
++  public int getMispredictionStalls() {
++    return mispredictionStalls;
++  }
++
++  /** Returns the number of branch taken stalls
++  * @return an integer
++  */
++  public int getBranchTakenStalls() {
++    return takenStalls;
++  }
++
+   /** Returns the number of Structural Stalls (FP Adder and FP Multiplier not available) that happened inside the pipeline
+    * @return an integer
+    */
+@@ -401,6 +513,20 @@ public class CPU {
+         throw new RAWException();
+       }
+ 
++      if (!(pipe.ID() instanceof JumpInstruction) && in_jump) {
++        in_jump = false;
++        long jump_instruction_id = old_pc.getValue() - 4;
++        int predictionStrategy = config.getInt(ConfigKey.BRANCH_PREDICTION);
++        if (predictionStrategy >= 4) {
++          updatePredictionBuffer(getBufferKey(jump_instruction_id), false);
++        }
++      }
++
++      if (wrongPC) {
++        mispredictionStalls++;
++        pc.writeDoubleWord(pc.getValue() - 4);
++        wrongPC = false;
++      }
+       // IF: instruction fetch stage.
+       stepIF();
+ 
+@@ -426,9 +552,22 @@ public class CPU {
+       pipe.setIF(mem.getInstruction(pc));
+       pipe.setEX(pipe.ID());
+       pipe.setID(bubble);
++
++      in_jump = false;
++      long jump_instruction_id = old_pc.getValue() - 4;
++      int predictionStrategy = config.getInt(ConfigKey.BRANCH_PREDICTION);
++      if (predictionStrategy >= 4) {
++        updatePredictionBuffer(getBufferKey(jump_instruction_id), true);
++      }
++
+       old_pc.writeDoubleWord((pc.getValue()));
+       pc.writeDoubleWord((pc.getValue()) + 4);
+-
++      if (wrongPC) {
++        wrongPC = false;
++      } else {
++        branchStalls++;
++      }
++      takenStalls++;
+     } catch (RAWException ex) {
+       if (currentPipeStage == Pipeline.Stage.ID) {
+         pipe.setEX(bubble);
+@@ -660,14 +799,64 @@ public class CPU {
+       logger.info("Moving " + pipe.IF() + " to ID");
+       pipe.setID(pipe.IF());
+ 
+-      InstructionInterface next_if = mem.getInstruction(pc);
+-      logger.info("Fetched new instruction " + next_if);
+-
+-      old_pc.writeDoubleWord((pc.getValue()));
+-      pc.writeDoubleWord((pc.getValue()) + 4);
+-      logger.info("New Program Counter value: " + pc.toString());
+-      logger.info("Putting " + next_if + "in IF.");
+-      pipe.setIF(next_if);
++      if (pipe.ID() instanceof JumpInstruction) {
++        in_jump = true;
++        InstructionInterface next_if;
++        switch (config.getInt(ConfigKey.BRANCH_PREDICTION)) {
++        case 1:
++        case 3: // predicting branch taken is same as flushing pipeline since both
++                // the destination address and whether to jump is calculated at ID stage
++          pipe.setIF(null);
++          branchStalls++;
++          if (!wrongPC) {
++            old_pc.writeDoubleWord((pc.getValue()));
++            pc.writeDoubleWord((pc.getValue()) + 4);
++            wrongPC = true;
++          }
++          break;
++        case 2:
++          next_if = mem.getInstruction(pc);
++          logger.info("Fetched new instruction " + next_if);
++
++          old_pc.writeDoubleWord((pc.getValue()));
++          pc.writeDoubleWord((pc.getValue()) + 4);
++          logger.info("New Program Counter value: " + pc.toString());
++          logger.info("Putting " + next_if + "in IF.");
++          pipe.setIF(next_if);
++          break;
++        case 4:
++        case 5:
++          boolean prediction = branchPrediction(getBufferKey(pc.getValue() - 4));
++          if (prediction) {
++            pipe.setIF(null);
++            branchStalls++;
++            if (!wrongPC) {
++              old_pc.writeDoubleWord((pc.getValue()));
++              pc.writeDoubleWord((pc.getValue()) + 4);
++              wrongPC = true;
++            }
++          } else {
++            next_if = mem.getInstruction(pc);
++            logger.info("Fetched new instruction " + next_if);
++
++            old_pc.writeDoubleWord((pc.getValue()));
++            pc.writeDoubleWord((pc.getValue()) + 4);
++            logger.info("New Program Counter value: " + pc.toString());
++            logger.info("Putting " + next_if + "in IF.");
++            pipe.setIF(next_if);
++          }
++          break;
++        }
++      } else {
++        InstructionInterface next_if = mem.getInstruction(pc);
++        logger.info("Fetched new instruction " + next_if);
++
++        old_pc.writeDoubleWord((pc.getValue()));
++        pc.writeDoubleWord((pc.getValue()) + 4);
++        logger.info("New Program Counter value: " + pc.toString());
++        logger.info("Putting " + next_if + "in IF.");
++        pipe.setIF(next_if);
++      }
+     } else {
+       pipe.setID(bubble);
+     }
+@@ -694,6 +883,14 @@ public class CPU {
+     funcUnitStalls = 0;
+     exStalls = 0;
+     memoryStalls = 0;
++    branchStalls = 0;
++    mispredictionStalls = 0;
++    takenStalls = 0;
++    predictionBuffer = new HashMap<String, boolean[]>();
++    pb_entries = new LinkedList<String>();
++    lastGlobalEntries = new int[2];
++    in_jump = false;
++    wrongPC = false;
+ 
+     // Reset registers.
+     for (int i = 0; i < 32; i++) {
+diff --git a/src/main/java/org/edumips64/core/is/BUILD b/src/main/java/org/edumips64/core/is/BUILD
+index fdd40d7..6d068f2 100644
+--- a/src/main/java/org/edumips64/core/is/BUILD
++++ b/src/main/java/org/edumips64/core/is/BUILD
+@@ -1,5 +1,10 @@
+ package(default_visibility = ["//visibility:public"])
+ 
++java_library(
++    name = "jumpinstruction",
++    srcs = ["JumpInstruction.java"],
++)
++
+ java_library(
+     name = "is",
+     srcs = glob(
+@@ -13,6 +18,7 @@ java_library(
+     deps = [
+         ":exceptions",
+         ":instruction",
++        ":jumpinstruction",
+         "//src/main/java/org/edumips64/core:bitsets",
+         "//src/main/java/org/edumips64/core:converter",
+         "//src/main/java/org/edumips64/core:cpu",  # HALT
+diff --git a/src/main/java/org/edumips64/core/is/FlowControlInstructions.java b/src/main/java/org/edumips64/core/is/FlowControlInstructions.java
+index a5b0060..4598280 100644
+--- a/src/main/java/org/edumips64/core/is/FlowControlInstructions.java
++++ b/src/main/java/org/edumips64/core/is/FlowControlInstructions.java
+@@ -33,7 +33,7 @@ import org.edumips64.core.fpu.FPInvalidOperationException;
+  *
+  * @author Trubia Massimo, Russo Daniele
+  */
+-public abstract class FlowControlInstructions extends Instruction {
++public abstract class FlowControlInstructions extends Instruction implements JumpInstruction {
+   public void IF() {
+     try {
+       dinero.IF(Converter.binToHex(Converter.intToBin(64, cpu.getLastPC().getValue())));
+diff --git a/src/main/java/org/edumips64/ui/swing/GUIStatistics.java b/src/main/java/org/edumips64/ui/swing/GUIStatistics.java
+index f7ce0b3..cb2aae5 100644
+--- a/src/main/java/org/edumips64/ui/swing/GUIStatistics.java
++++ b/src/main/java/org/edumips64/ui/swing/GUIStatistics.java
+@@ -41,7 +41,7 @@ public class GUIStatistics extends GUIComponent {
+ 
+   StatPanel statPanel;
+   JScrollPane jsp;
+-  private int nCycles, nInstructions, rawStalls, codeSize, WAWStalls, dividerStalls, memoryStalls;
++  private int nCycles, nInstructions, rawStalls, codeSize, WAWStalls, dividerStalls, memoryStalls, branchStalls, mispredictionStalls, takenStalls;
+   private float cpi;
+ 
+   GUIStatistics(CPU cpu, Memory memory, ConfigStore config) {
+@@ -58,7 +58,7 @@ public class GUIStatistics extends GUIComponent {
+   class StatPanel extends JPanel {
+     JList statList;
+     String [] statistics = {" Execution", " 0 Cycles", " 0 Instructions", " ", " Stalls", " 0 RAW Stalls", " 0 WAW Stalls",
+-                            " 0 WAR Stalls", " 0 Structural Stalls(Divider not available)", "0 Structural Stalls (Memory not available)", " 0 Branch Taken Stalls", " 0 Branch Misprediction Stalls",
++                            " 0 WAR Stalls", " 0 Structural Stalls(Divider not available)", "0 Structural Stalls (Memory not available)", " 0 Branch Taken Stalls", " 0 Branch Misprediction Stalls", " 0 Branch Stalls",
+                             " Code Size", " 0 Bytes", "FPU info", "FCSR", "FCSRGroups", "FCSRMnemonics", "FCSRValues"
+                            };
+     StatPanel() {
+@@ -90,6 +90,9 @@ public class GUIStatistics extends GUIComponent {
+     WAWStalls = cpu.getWAWStalls();
+     dividerStalls = cpu.getStructuralStallsDivider();
+     memoryStalls = cpu.getStructuralStallsMemory();
++    branchStalls = cpu.getBranchStalls();
++    mispredictionStalls = cpu.getMispredictionStalls();
++    takenStalls = cpu.getBranchTakenStalls();
+   }
+ 
+   public void draw() {
+@@ -168,32 +171,35 @@ public class GUIStatistics extends GUIComponent {
+         label.setText(" " + memoryStalls  + " " + CurrentLocale.getString("STRUCTS_MEMNOTAVAILABLE"));
+         return label;
+       case 10:
+-        label.setText(" 0 " + CurrentLocale.getString("BTS"));
++        label.setText(" " + takenStalls + " " + CurrentLocale.getString("BTS"));
+         return label;
+       case 11:
+-        label.setText(" 0 " + CurrentLocale.getString("BMS"));
++        label.setText(" " + mispredictionStalls + " " + CurrentLocale.getString("BMS"));
+         return label;
+       case 12:
++        label.setText(" " + branchStalls + " " + CurrentLocale.getString("BRANCH_STALLS"));
++        return label;
++      case 13:
+         label.setText(" " + CurrentLocale.getString("CSIZE"));
+         label.setForeground(Color.red);
+         return label;
+-      case 13:
++      case 14:
+         label.setText(" " + codeSize + " " + CurrentLocale.getString("BYTES"));
+         return label;
+-      case 14:
++      case 15:
+         label.setText(" " + CurrentLocale.getString("FPUINFO"));
+         label.setForeground(Color.red);
+         return label;
+-      case 15:
++      case 16:
+         label.setText(" " + CurrentLocale.getString("FPUFCSR"));
+         return label;
+-      case 16:
++      case 17:
+         label.setText(" " + "    FCC       Cause EnablFlag RM");
+         return label;
+-      case 17:
++      case 18:
+         label.setText(" " + "7654321 0      VZOUIVZOUIVZOUI");
+         return label;
+-      case 18:
++      case 19:
+         label.setText(" " + cpu.getFCSR().getBinString());
+         return label;
+       }
+diff --git a/src/main/java/org/edumips64/utils/ConfigKey.java b/src/main/java/org/edumips64/utils/ConfigKey.java
+index eaa9428..881d064 100644
+--- a/src/main/java/org/edumips64/utils/ConfigKey.java
++++ b/src/main/java/org/edumips64/utils/ConfigKey.java
+@@ -39,7 +39,8 @@ public enum ConfigKey {
+     FP_TOWARDS_PLUS_INFINITY("TOWARDS_PLUS_INFINITY"),
+     FP_TOWARDS_MINUS_INFINITY("TOWARDS_MINUS_INFINITY"),
+     FP_LONG_DOUBLE_VIEW("LONGDOUBLEVIEW"),
+-    UI_FONT_SIZE("FONTSIZE");
++    UI_FONT_SIZE("FONTSIZE"),
++    BRANCH_PREDICTION("BRANCH_PREDICTION");
+     
+     private final String text;
+     
+diff --git a/src/main/java/org/edumips64/utils/ConfigStore.java b/src/main/java/org/edumips64/utils/ConfigStore.java
+index d15766a..3d7cf72 100644
+--- a/src/main/java/org/edumips64/utils/ConfigStore.java
++++ b/src/main/java/org/edumips64/utils/ConfigStore.java
+@@ -66,6 +66,14 @@ public abstract class ConfigStore {
+     ConfigStore.defaults.put(ConfigKey.N_STEPS, 4);
+     ConfigStore.defaults.put(ConfigKey.SLEEP_INTERVAL, 10);
+ 
++    // For controlling the type of branch prediction
++    // 1 = flush pipeline
++    // 2 = predict not taken
++    // 3 = predict taken
++    // 4 = 2-bit local predictor
++    // 5 = (2,1) correlating predictor
++    ConfigStore.defaults.put(ConfigKey.BRANCH_PREDICTION, 1);
++
+     // FPU exceptions defaults.
+     ConfigStore.defaults.put(ConfigKey.FP_INVALID_OPERATION, true);
+     ConfigStore.defaults.put(ConfigKey.FP_OVERFLOW, true);
+diff --git a/src/main/java/org/edumips64/utils/CurrentLocale.java b/src/main/java/org/edumips64/utils/CurrentLocale.java
+index c214ad1..4e39eeb 100644
+--- a/src/main/java/org/edumips64/utils/CurrentLocale.java
++++ b/src/main/java/org/edumips64/utils/CurrentLocale.java
+@@ -144,6 +144,7 @@ public class CurrentLocale {
+     en.put("STRUCTS_MEMNOTAVAILABLE", "Structural Stalls (Memory not available)");
+     en.put("BTS", "Branch Taken Stalls");
+     en.put("BMS", "Branch Misprediction Stalls");
++    en.put("BRANCH_STALLS", "Branch Stalls");
+     en.put("CSIZE", "Code size");
+     en.put("Config.APPEARANCE", "Appearance");
+     en.put("Config.BEHAVIOR", "Behavior");
+@@ -362,6 +363,7 @@ public class CurrentLocale {
+     it.put("STRUCTS_MEMNOTAVAILABLE", "Stalli strutturali (Memoria non disponibile)");
+     it.put("BTS", "Stalli 'Branch Taken'");
+     it.put("BMS", "Stalli 'Branch Misprediction'");
++    it.put("BRANCH_STALLS", "Branch Stalls");
+     it.put("CSIZE", "Dimensione del codice");
+     it.put("Config.APPEARANCE", "Aspetto");
+     it.put("Config.BEHAVIOR", "Comportamento");

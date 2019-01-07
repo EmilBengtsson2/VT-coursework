@@ -1,0 +1,541 @@
+# myTeam.py
+# ---------
+# Licensing Information:  You are free to use or extend these projects for
+# educational purposes provided that (1) you do not distribute or publish
+# solutions, (2) you retain this notice, and (3) you provide clear
+# attribution to UC Berkeley, including a link to http://ai.berkeley.edu.
+# 
+# Attribution Information: The Pacman AI projects were developed at UC Berkeley.
+# The core projects and autograders were primarily created by John DeNero
+# (denero@cs.berkeley.edu) and Dan Klein (klein@cs.berkeley.edu).
+# Student side autograding was added by Brad Miller, Nick Hay, and
+# Pieter Abbeel (pabbeel@cs.berkeley.edu).
+
+
+from captureAgents import CaptureAgent
+import random, time, util
+from game import Directions
+import game
+from util import nearestPoint
+from util import Counter
+from util import Queue
+
+#################
+# Team creation #
+#################
+
+def createTeam(firstIndex, secondIndex, isRed,
+               first = 'AttackAgent', second = 'DefenseAgent'):
+  """
+  This function should return a list of two agents that will form the
+  team, initialized using firstIndex and secondIndex as their agent
+  index numbers.  isRed is True if the red team is being created, and
+  will be False if the blue team is being created.
+
+  As a potentially helpful development aid, this function can take
+  additional string-valued keyword arguments ("first" and "second" are
+  such arguments in the case of this function), which will come from
+  the --redOpts and --blueOpts command-line arguments to capture.py.
+  For the nightly contest, however, your team will be created without
+  any extra arguments, so you should make sure that the default
+  behavior is what you want for the nightly contest.
+  """
+
+  # The following line is an example only; feel free to change it.
+  return [eval(first)(firstIndex), eval(second)(secondIndex)]
+
+##########
+# Agents #
+##########
+
+###################################################################################################
+###################################################################################################
+###################################################################################################
+###################################################################################################
+###################################################################################################
+###################################################################################################
+###################################################################################################
+###################################################################################################
+###################################################################################################
+###################################################################################################
+###################################################################################################
+###################################################################################################
+###################################################################################################
+###################################################################################################
+###################################################################################################
+###################################################################################################
+###################################################################################################
+###################################################################################################
+###################################################################################################
+###################################################################################################
+
+class AttackAgent(CaptureAgent):
+  """
+  A Dummy agent to serve as an example of the necessary agent structure.
+  You should look at baselineTeam.py for more details about how to
+  create an agent as this is the bare minimum.
+  """
+
+  def registerInitialState(self, gameState):
+    """
+    This method handles the initial setup of the
+    agent to populate useful fields (such as what team
+    we're on).
+
+    A distanceCalculator instance caches the maze distances
+    between each pair of positions, so your agents can use:
+    self.distancer.getDistance(p1, p2)
+
+    IMPORTANT: This method may run for at most 15 seconds.
+    """
+
+    '''
+    Make sure you do not delete the following line. If you would like to
+    use Manhattan distances instead of maze distances in order to save
+    on initialization time, please take a look at
+    CaptureAgent.registerInitialState in captureAgents.py.
+    '''
+    CaptureAgent.registerInitialState(self, gameState)
+
+    '''
+    Your initialization code goes here, if you need any.
+    '''
+    self.start = gameState.getAgentPosition(self.index)
+    self.walls = gameState.getWalls().asList()
+
+    self.foodScores = Counter()
+    self.food = []
+    self.update_food_scores(gameState)
+
+    self.capsuleScores = Counter()
+    self.update_capsule_scores(gameState)
+
+    self.comeHomeIncentive = Counter()
+    self.returned = 0
+
+    self.ghostScores = Counter()
+    self.doNothingCounter = 0
+    self.reckless = 0
+
+  def update_capsule_scores(self, gameState):
+    self.capsuleScores = Counter()
+    capsules = self.getCapsules(gameState);
+    for position in capsules:
+      self.update_scores(5, position, self.capsuleScores, 1.6)
+
+  def update_ghost_scores(self, gameState):
+    self.ghostScores = Counter()
+    for opponent in self.getOpponents(gameState):
+      opponentState = gameState.getAgentState(opponent)
+      if not opponentState.isPacman and opponentState.scaredTimer == 0:
+        position = gameState.getAgentPosition(opponent)
+        if position:
+          self.update_scores(-30.0, position, self.ghostScores, 3)
+
+  def update_food_scores(self, gameState):
+    newFood = self.getFood(gameState).asList()
+    for foodPos in list(set(newFood) - set(self.food)):
+      self.update_scores(1.0, foodPos, self.foodScores, 2.0)
+    for foodPos in list(set(self.food) - set(newFood)):
+      self.update_scores(-1.0, foodPos, self.foodScores, 2.0)
+    self.food = newFood
+
+  def update_scores(self, initScore, position, scoreCounter, denominator):
+    queue = Queue()
+    queue.push((position, initScore))
+    explored = {}
+    explored[position] = True
+    while not queue.isEmpty():
+      state = queue.pop()
+      scoreCounter[state[0]] += state[1]
+      #For debug
+      #if scoreCounter[state[0]] < 0:
+      #   scoreCounter[state[0]] = 0
+      for tile in self.get_adjacent_tiles(state[0]):
+        if tile not in explored:
+          explored[tile] = True
+          queue.push((tile, state[1]/denominator))
+
+  def get_adjacent_tiles(self, position):
+    tiles = []
+    actions = [(0,1), (0, -1), (1, 0), (-1, 0)]
+    for action in actions:
+      newTile = (position[0]+action[0], position[1]+action[1])
+      if newTile not in self.walls:
+        tiles.append(newTile)
+    return tiles
+
+  def chooseAction(self, gameState):
+    """
+    Picks among actions randomly.
+    """
+    #time.sleep(0.2)
+    self.update_all_scores(gameState)
+    actions = gameState.getLegalActions(self.index)
+
+    '''
+    You should change this in your own agent.
+    '''
+
+    bestScore = -1000000000
+    bestAction = None
+
+    tempComeHomeIncentive = Counter()
+    for entry in self.comeHomeIncentive:
+      tempComeHomeIncentive[entry] = self.comeHomeIncentive[entry] * (1 + self.doNothingCounter)
+
+    allScores = self.foodScores + self.capsuleScores + tempComeHomeIncentive
+
+    if self.reckless > 0:
+      self.reckless -= 1
+    else:
+      allScores += self.ghostScores
+
+    for action in actions:
+      successor = self.getSuccessor(gameState, action)
+
+      successorScore = allScores[successor.getAgentState(self.index).getPosition()]
+
+      # This is needed sometimes to make pacman attack
+      foodList = self.getFood(successor).asList()
+      attackIncentive = 0
+      if len(foodList) > 0:
+        myPos = successor.getAgentState(self.index).getPosition()
+        minDistance = min([self.getMazeDistance(myPos, food) for food in foodList])
+        attackIncentive = 0.0001 / minDistance
+
+      successorScore += attackIncentive
+
+      if successorScore > bestScore:
+        bestScore = successorScore
+        bestAction = action
+
+    if bestAction == game.Directions.STOP:
+      self.doNothingCounter += 1
+      if self.doNothingCounter > 2:
+        self.reckless = 10
+    else:
+      self.doNothingCounter = 0
+
+    # for debugging
+    '''
+    for score in allScores:
+      if allScores[score] < 0:
+        allScores[score] = 0
+    self.displayDistributionsOverPositions([allScores])
+    #'''
+    return bestAction
+
+  def update_all_scores(self, gameState):
+    # Update comeHomeIncentive
+    self.update_scores((len(self.food)-len(self.getFood(gameState).asList()) - (gameState.getAgentState(self.index).numReturned - self.returned)) * 300, self.start, self.comeHomeIncentive, 1.10)
+    self.returned = gameState.getAgentState(self.index).numReturned
+    # Update foodScores
+    self.update_food_scores(gameState)
+    # Update capsuleScores
+    self.update_capsule_scores(gameState)
+    # Update ghost scores
+    self.update_ghost_scores(gameState)
+
+  #Copied from baselineTeam.py
+  def getSuccessor(self, gameState, action):
+    """
+    Finds the next successor which is a grid position (location tuple).
+    """
+    successor = gameState.generateSuccessor(self.index, action)
+    pos = successor.getAgentState(self.index).getPosition()
+    if pos != nearestPoint(pos):
+      # Only half a grid position was covered
+      return successor.generateSuccessor(self.index, action)
+    else:
+      return successor
+
+
+###################################################################################################
+###################################################################################################
+###################################################################################################
+###################################################################################################
+###################################################################################################
+###################################################################################################
+###################################################################################################
+###################################################################################################
+###################################################################################################
+###################################################################################################
+###################################################################################################
+###################################################################################################
+###################################################################################################
+###################################################################################################
+###################################################################################################
+###################################################################################################
+###################################################################################################
+###################################################################################################
+###################################################################################################
+###################################################################################################
+
+
+class DefenseAgent(CaptureAgent):
+  """
+  A Dummy agent to serve as an example of the necessary agent structure.
+  You should look at baselineTeam.py for more details about how to
+  create an agent as this is the bare minimum.
+  """
+
+  def registerInitialState(self, gameState):
+    """
+    This method handles the initial setup of the
+    agent to populate useful fields (such as what team
+    we're on).
+
+    A distanceCalculator instance caches the maze distances
+    between each pair of positions, so your agents can use:
+    self.distancer.getDistance(p1, p2)
+
+    IMPORTANT: This method may run for at most 15 seconds.
+    """
+
+    '''
+    Make sure you do not delete the following line. If you would like to
+    use Manhattan distances instead of maze distances in order to save
+    on initialization time, please take a look at
+    CaptureAgent.registerInitialState in captureAgents.py.
+    '''
+    CaptureAgent.registerInitialState(self, gameState)
+
+    '''
+    Your initialization code goes here, if you need any.
+    '''
+    self.opponentIndexes = self.getOpponents(gameState)
+    self.walls = gameState.getWalls().asList()
+    self.boardWidth = gameState.getWalls().width
+
+    self.foodScores = Counter()
+    self.food = []
+    self.update_food_scores(gameState)
+
+    self.pacmanScores = Counter()
+
+    self.lastSeenScore = Counter()
+    self.lastSeenPos = None
+    self.lastSeenCounter = 0
+    self.scaryPacman = False
+
+    self.o0Distribution = Counter()
+    self.o1Distribution = Counter()
+    self.o0Distribution[gameState.getInitialAgentPosition(self.opponentIndexes[0])] = 1.0
+    self.o1Distribution[gameState.getInitialAgentPosition(self.opponentIndexes[1])] = 1.0
+
+    self.distributionScore = Counter()
+
+  def updateDistributions(self, gameState):
+    pacPos = gameState.getAgentPosition(self.index)
+    agentDistances = gameState.getAgentDistances()
+    o0Distance = agentDistances[self.opponentIndexes[0]]
+    o1Distance = agentDistances[self.opponentIndexes[1]]
+    actions = [(0,1),(0,-1),(1,0),(-1,0),(0,0)]
+
+    tempDistribution = Counter()
+    if self.o0Distribution.totalCount() == 0:
+      initPos = gameState.getInitialAgentPosition(self.opponentIndexes[0])
+      for pos in actions:
+        newPos = (initPos[0]+pos[0], initPos[1]+pos[1])
+        if not newPos in self.walls:
+          self.o0Distribution[newPos] = 1
+      self.o0Distribution.normalize()
+    for position in self.o0Distribution:
+      if self.o0Distribution[position] > 0:
+        for pos in actions:
+          newPos = (position[0]+pos[0], position[1]+pos[1])
+          if not newPos in self.walls:
+            tempDistribution[newPos] = 1
+    for position in tempDistribution:
+      distance = util.manhattanDistance(position, pacPos)
+      tempDistribution[position] *= gameState.getDistanceProb(distance, o0Distance)
+    tempDistribution.normalize()
+    self.o0Distribution = tempDistribution
+
+    tempDistribution = Counter()
+    if self.o1Distribution.totalCount() == 0:
+      initPos = gameState.getInitialAgentPosition(self.opponentIndexes[1])
+      for pos in actions:
+        newPos = (initPos[0]+pos[0], initPos[1]+pos[1])
+        if not newPos in self.walls:
+          self.o1Distribution[newPos] = 1
+      self.o1Distribution.normalize()
+    for position in self.o1Distribution:
+      if self.o1Distribution[position] > 0:
+        for pos in actions:
+          newPos = (position[0]+pos[0], position[1]+pos[1])
+          if not newPos in self.walls:
+            tempDistribution[newPos] = 1
+    for position in tempDistribution:
+      distance = util.manhattanDistance(position, pacPos)
+      tempDistribution[position] *= gameState.getDistanceProb(distance, o1Distance)
+    tempDistribution.normalize()
+    self.o1Distribution = tempDistribution
+
+
+  def update_pacman_scores(self, gameState):
+    self.pacmanScores = Counter()
+    self.scaryPacman = False
+    for opponent in self.getOpponents(gameState):
+      position = gameState.getAgentPosition(opponent)
+      if position:
+        if opponent == self.opponentIndexes[0]:
+          self.o0Distribution = Counter()
+          self.o0Distribution[position] = 1.0
+        else:
+          self.o1Distribution = Counter()
+          self.o1Distribution[position] = 1.0
+        if gameState.getAgentState(opponent).isPacman:
+          self.lastSeenPos = position
+          self.lastSeenCounter = 10
+          self.update_scores(200.0, position, self.pacmanScores, 2.0)
+          if gameState.getAgentState(self.index).scaredTimer > 0:
+            self.update_scores(-2000, position, self.pacmanScores, 5.0)
+            self.scaryPacman = True
+
+  def update_food_scores(self, gameState):
+    newFood = self.getFoodYouAreDefending(gameState).asList()
+    for foodPos in list(set(newFood) - set(self.food)):
+      self.update_scores(0.5, foodPos, self.foodScores, 1.3)
+    for foodPos in list(set(self.food) - set(newFood)):
+      self.lastSeenPos = foodPos
+      self.lastSeenCounter = 10
+      self.update_scores(-0.5, foodPos, self.foodScores, 1.3)
+    self.food = newFood
+
+  def update_distribution_scores(self, gameState):
+    self.distributionScore = Counter()
+    self.update_scores(10, self.o0Distribution.argMax(), self.distributionScore, 1.3)
+    self.update_scores(10, self.o1Distribution.argMax(), self.distributionScore, 1.3)
+    for entry in self.distributionScore:
+      if self.red:
+        if entry[0] > self.boardWidth / 2 - 1:
+          self.distributionScore[entry] = 0
+      else:
+        if entry[0] < self.boardWidth / 2:
+          self.distributionScore[entry] = 0
+
+  def update_scores(self, initScore, position, scoreCounter, denominator):
+    if not position:
+      return
+    queue = Queue()
+    queue.push((position, initScore))
+    explored = {}
+    explored[position] = True
+    while not queue.isEmpty():
+      state = queue.pop()
+      scoreCounter[state[0]] += state[1]
+      #For debug
+      if scoreCounter[state[0]] < 0:
+         scoreCounter[state[0]] = 0
+      for tile in self.get_adjacent_tiles(state[0]):
+        if tile not in explored:
+          explored[tile] = True
+          queue.push((tile, state[1]/denominator))
+
+  def get_adjacent_tiles(self, position):
+    tiles = []
+    actions = [(0,1), (0, -1), (1, 0), (-1, 0)]
+    for action in actions:
+      newTile = (position[0]+action[0], position[1]+action[1])
+      if newTile not in self.walls:
+        tiles.append(newTile)
+    return tiles
+
+  def chooseAction(self, gameState):
+    """
+    Picks among actions randomly.
+    """
+    self.updateDistributions(gameState)
+    self.update_all_scores(gameState)
+    actions = gameState.getLegalActions(self.index)
+
+    '''
+    You should change this in your own agent.
+    '''
+
+    bestScore = -1000000000
+    bestAction = None
+
+    tempFoodScores = util.Counter()
+    for pos in self.foodScores:
+      if self.red:
+        if pos[0] < self.boardWidth/2-1:
+          tempFoodScores[pos] = self.foodScores[pos] * (1.0 / (self.boardWidth/2 - pos[0]))
+      else:
+        if pos[0] > self.boardWidth/2:
+          tempFoodScores[pos] = self.foodScores[pos] * (1.0 / (pos[0] - self.boardWidth/2))
+
+    if self.scaryPacman:
+      self.lastSeenScore = Counter()
+
+    allScores = self.pacmanScores + self.lastSeenScore + self.distributionScore #+ self.foodScores
+
+    for action in actions:
+      successor = self.getSuccessor(gameState, action)
+
+      successorScore = allScores[successor.getAgentState(self.index).getPosition()]
+
+      # This is needed sometimes to make ghostman not get stuck at a local max
+      noLocalMax = 0
+      myPos = successor.getAgentState(self.index).getPosition()
+      distance = self.getMazeDistance(myPos, tempFoodScores.argMax())
+      if distance != 0:
+        noLocalMax = 1.0 / distance
+      else:
+        noLocalMax = 1
+
+      successorScore += noLocalMax
+
+      if successorScore > bestScore:
+        bestScore = successorScore
+        bestAction = action
+
+    # for debugging
+    '''
+    for score in allScores:
+      if allScores[score] < 0:
+        allScores[score] = 0
+    for score in self.pacmanScores:
+      if self.pacmanScores[score] < 0:
+        self.pacmanScores[score] = 0
+    self.displayDistributionsOverPositions([tempFoodScores])
+    #'''
+    '''
+    temp0 = Counter()
+    temp0[self.o0Distribution.argMax()] = 1
+    temp1 = Counter()
+    temp1[self.o1Distribution.argMax()] = 1
+    self.displayDistributionsOverPositions([self.distributionScore])
+    #'''
+    return bestAction
+
+  def update_all_scores(self, gameState):
+    # Update foodScores
+    self.update_food_scores(gameState)
+    # Update ghost scores
+    self.update_pacman_scores(gameState)
+    # Update lastSeenScore
+    self.lastSeenScore = Counter()
+    self.update_scores(50, self.lastSeenPos, self.lastSeenScore, 1.1)
+    if self.lastSeenCounter == 0:
+      self.lastSeenPos = None
+    else:
+      self.lastSeenCounter -= 1
+    # Update distribution scores
+    self.update_distribution_scores(gameState)
+
+  #Copied from baselineTeam.py
+  def getSuccessor(self, gameState, action):
+    """
+    Finds the next successor which is a grid position (location tuple).
+    """
+    successor = gameState.generateSuccessor(self.index, action)
+    pos = successor.getAgentState(self.index).getPosition()
+    if pos != nearestPoint(pos):
+      # Only half a grid position was covered
+      return successor.generateSuccessor(self.index, action)
+    else:
+      return successor
+

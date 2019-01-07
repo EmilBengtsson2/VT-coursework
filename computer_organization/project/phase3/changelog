@@ -1,0 +1,346 @@
+I have mainly changed two files; ConfigStore.java, and ConfigKey.java. I also made a new class called Cache.java.
+Cache.java is a cache, and it is used by the rest of the program where memory was accessed in the baseline simulator.
+I added three entries to the ConfigStore that determine which type of cache is to be used and which settings it will
+have. Those three entries have corresponding ConfigKeys.
+
+The Cache.java class is where most of the changes are, as I implemented the whole cache there.
+It has methods for accessing instructions or data that are at certain addresses in the memory, if the data or
+instruction is in the cache the method will return it. If the data or instruction is not in the cache, the method
+will return null, a cache miss will be registered, and a new cache line containing the instruction or data will
+be fetched from memory and added to the cache. If there are no empty spots for the new cache line, it will replace
+a random line in its set.
+
+Additionally I changed some of the gui classes to show the cache misses in the statistics window.
+
+Look below to see exactly which changes have been made.
+
+Output from "git diff" in the edumips64 directory (The lines with a plus indicate an addition in the code,
+and the lines with a minus indicate a removal in the code. For nice coloring and stuff, try it yourself):
+
+diff --git a/src/main/java/org/edumips64/BUILD b/src/main/java/org/edumips64/BUILD
+index be18d01..72625d5 100644
+--- a/src/main/java/org/edumips64/BUILD
++++ b/src/main/java/org/edumips64/BUILD
+@@ -123,6 +123,7 @@ java_library(
+         "//src/main/java/org/edumips64/core:dinero",
+         "//src/main/java/org/edumips64/core:iomanager",
+         "//src/main/java/org/edumips64/core:memory",
++        "//src/main/java/org/edumips64/core:cache",
+         "//src/main/java/org/edumips64/core:symboltable",
+         "//src/main/java/org/edumips64/core/is",
+         "//src/main/java/org/edumips64/core/is:exceptions",
+@@ -150,6 +151,7 @@ java_library(
+         "//src/main/java/org/edumips64/core:dinero",
+         "//src/main/java/org/edumips64/core:iomanager",
+         "//src/main/java/org/edumips64/core:memory",
++        "//src/main/java/org/edumips64/core:cache",
+         "//src/main/java/org/edumips64/core:symboltable",
+         "//src/main/java/org/edumips64/core/is",
+         "//src/main/java/org/edumips64/core/is:exceptions",
+diff --git a/src/main/java/org/edumips64/core/BUILD b/src/main/java/org/edumips64/core/BUILD
+index 63c378f..0c388b0 100644
+--- a/src/main/java/org/edumips64/core/BUILD
++++ b/src/main/java/org/edumips64/core/BUILD
+@@ -17,6 +17,7 @@ java_library(
+         "//src/main/java/org/edumips64/core/is:exceptions",
+         "//src/main/java/org/edumips64/core/is:instructioninterface",
+         "//src/main/java/org/edumips64/utils:config",
++        ":cache",
+     ],
+ )
+ 
+@@ -134,3 +135,16 @@ java_library(
+     name = "exceptions",
+     srcs = glob(["*Exception.java"]),
+ )
++
++java_library(
++    name = "cache",
++    srcs = [
++        "Cache.java",
++    ],
++    deps = [
++        ":memory",
++        ":exceptions",
++        "//src/main/java/org/edumips64/core/is:instructioninterface",
++        "//src/main/java/org/edumips64/utils:config",
++    ],
++)
+\ No newline at end of file
+diff --git a/src/main/java/org/edumips64/core/CPU.java b/src/main/java/org/edumips64/core/CPU.java
+index a8adddd..5ca2672 100644
+--- a/src/main/java/org/edumips64/core/CPU.java
++++ b/src/main/java/org/edumips64/core/CPU.java
+@@ -37,6 +37,7 @@ import org.edumips64.utils.*;
+ */
+ public class CPU {
+   private Memory mem;
++  public static Cache cache;
+   private Register[] gpr;
+   private static final Logger logger = Logger.getLogger(CPU.class.getName());
+ 
+@@ -105,6 +106,8 @@ public class CPU {
+     mem = memory;
+     logger.info("Got Memory instance..");
+ 
++    cache = new Cache(config, memory);
++
+     // Registers initialization
+     gpr = new Register[32];
+     gpr[0] = new R0();
+@@ -423,7 +426,10 @@ public class CPU {
+ 
+       // A J-Type instruction has just modified the Program Counter. We need to
+       // put in the IF stage the instruction the PC points to
+-      pipe.setIF(mem.getInstruction(pc));
++      InstructionInterface next_if = cache.getInstruction(pc.readWord(0));
++      if (next_if == null)
++        next_if = mem.getInstruction(pc);
++      pipe.setIF(next_if);
+       pipe.setEX(pipe.ID());
+       pipe.setID(bubble);
+       old_pc.writeDoubleWord((pc.getValue()));
+@@ -639,7 +645,7 @@ public class CPU {
+     return false;
+   }
+ 
+-  private void stepIF() throws IrregularStringOfBitsException, IrregularWriteOperationException, BreakException {
++  private void stepIF() throws IrregularStringOfBitsException, IrregularWriteOperationException, BreakException ,NotAlignException, MemoryElementNotFoundException {
+     // We don't have to execute any methods, but we must get the new
+     // instruction from the symbol table.
+     changeStage(Pipeline.Stage.IF);
+@@ -660,7 +666,9 @@ public class CPU {
+       logger.info("Moving " + pipe.IF() + " to ID");
+       pipe.setID(pipe.IF());
+ 
+-      InstructionInterface next_if = mem.getInstruction(pc);
++      InstructionInterface next_if = cache.getInstruction(pc.readWord(0));
++      if (next_if == null)
++        next_if = mem.getInstruction(pc);
+       logger.info("Fetched new instruction " + next_if);
+ 
+       old_pc.writeDoubleWord((pc.getValue()));
+@@ -737,6 +745,9 @@ public class CPU {
+     // Reset the memory.
+     mem.reset();
+ 
++    //reset the cache
++    cache.reset();
++
+     // Reset pipeline
+     pipe.clear();
+     // Reset FP pipeline
+@@ -854,4 +865,4 @@ public class CPU {
+     public void writeDoubleWord(long value) {}
+ 
+   }
+-}
++}
+\ No newline at end of file
+diff --git a/src/main/java/org/edumips64/core/is/LDC1.java b/src/main/java/org/edumips64/core/is/LDC1.java
+index 8d3c06d..5454a3f 100644
+--- a/src/main/java/org/edumips64/core/is/LDC1.java
++++ b/src/main/java/org/edumips64/core/is/LDC1.java
+@@ -48,7 +48,9 @@ class LDC1 extends FPLoading {
+     //For the trace file
+     dinero.Load(Converter.binToHex(Converter.positiveIntToBin(64, address)), 8);
+ 
+-    MemoryElement memEl = memory.getCellByAddress(address);
++    MemoryElement memEl = CPU.cache.getData(address);
++    if (memEl == null)
++      memEl = memory.getCellByAddress(address);
+     //reading from the memory element and saving values on LMD register
+     TR[LMD_REGISTER].setBits(memEl.getBinString(), 0);
+ 
+diff --git a/src/main/java/org/edumips64/core/is/LWC1.java b/src/main/java/org/edumips64/core/is/LWC1.java
+index 44f0811..5db9e67 100644
+--- a/src/main/java/org/edumips64/core/is/LWC1.java
++++ b/src/main/java/org/edumips64/core/is/LWC1.java
+@@ -50,7 +50,9 @@ class LWC1 extends FPLoading {
+     long address = TR[OFFSET_PLUS_BASE].getValue();
+     //For the trace file
+     dinero.Load(Converter.binToHex(Converter.positiveIntToBin(64, address)), 4);
+-    MemoryElement memEl = memory.getCellByAddress(address);
++    MemoryElement memEl = CPU.cache.getData(address);
++    if (memEl == null)
++      memEl = memory.getCellByAddress(address);
+     //reading from the memory element and saving values on LMD register
+     TR[LMD_REGISTER].writeWord(memEl.readWord((int)(address % 8)));
+ 
+diff --git a/src/main/java/org/edumips64/core/is/Loading.java b/src/main/java/org/edumips64/core/is/Loading.java
+index 569739f..bafded1 100644
+--- a/src/main/java/org/edumips64/core/is/Loading.java
++++ b/src/main/java/org/edumips64/core/is/Loading.java
+@@ -75,7 +75,9 @@ public abstract class Loading extends LDSTInstructions {
+   }
+ 
+   public void MEM() throws IrregularStringOfBitsException, NotAlignException, MemoryElementNotFoundException, AddressErrorException, IrregularWriteOperationException {
+-    memEl = memory.getCellByAddress(address);
++    memEl = CPU.cache.getData(address);
++    if (memEl == null)
++      memEl = memory.getCellByAddress(address);
+     doMEM();
+ 
+     if (cpu.isEnableForwarding()) {
+diff --git a/src/main/java/org/edumips64/core/is/SDC1.java b/src/main/java/org/edumips64/core/is/SDC1.java
+index 2be271d..05caac3 100644
+--- a/src/main/java/org/edumips64/core/is/SDC1.java
++++ b/src/main/java/org/edumips64/core/is/SDC1.java
+@@ -46,7 +46,9 @@ public class SDC1 extends FPStoring {
+       long address = TR[OFFSET_PLUS_BASE].getValue();
+       //For the trace file
+       dinero.Store(Converter.binToHex(Converter.positiveIntToBin(64, address)), 8);
+-      MemoryElement memEl = memory.getCellByAddress(address);
++      MemoryElement memEl = CPU.cache.getData(address);
++      if (memEl == null)
++        memEl = memory.getCellByAddress(address);
+       //writing on the memory element the RT register
+       memEl.setBits(TR[RT_FIELD].getBinString(), 0);
+ 
+diff --git a/src/main/java/org/edumips64/core/is/SWC1.java b/src/main/java/org/edumips64/core/is/SWC1.java
+index d590ff6..e5731c4 100644
+--- a/src/main/java/org/edumips64/core/is/SWC1.java
++++ b/src/main/java/org/edumips64/core/is/SWC1.java
+@@ -48,7 +48,9 @@ class SWC1 extends FPStoring {
+     long address = TR[OFFSET_PLUS_BASE].getValue();
+     //For the trace file
+     dinero.Store(Converter.binToHex(Converter.positiveIntToBin(64, address)), 4);
+-    MemoryElement memEl = memory.getCellByAddress(address);
++    MemoryElement memEl = CPU.cache.getData(address);
++    if (memEl == null)
++      memEl = memory.getCellByAddress(address);
+     //writing on the memory element the RT register
+     memEl.writeWord(TR[RT_FIELD].readWord(0), (int)(address % 8));
+ 
+diff --git a/src/main/java/org/edumips64/core/is/Storing.java b/src/main/java/org/edumips64/core/is/Storing.java
+index d637bf4..c714ec7 100644
+--- a/src/main/java/org/edumips64/core/is/Storing.java
++++ b/src/main/java/org/edumips64/core/is/Storing.java
+@@ -76,7 +76,9 @@ public abstract class Storing extends LDSTInstructions {
+   }
+ 
+   public void MEM() throws IrregularStringOfBitsException, MemoryElementNotFoundException, NotAlignException, AddressErrorException, IrregularWriteOperationException {
+-    memEl = memory.getCellByAddress(address);
++    memEl = CPU.cache.getData(address);
++    if (memEl == null)
++      memEl = memory.getCellByAddress(address);
+ 
+     if (cpu.isEnableForwarding()) {
+       TR[RT_FIELD].setBits(rt.getBinString(), 0);
+diff --git a/src/main/java/org/edumips64/ui/swing/GUIStatistics.java b/src/main/java/org/edumips64/ui/swing/GUIStatistics.java
+index f7ce0b3..e14427d 100644
+--- a/src/main/java/org/edumips64/ui/swing/GUIStatistics.java
++++ b/src/main/java/org/edumips64/ui/swing/GUIStatistics.java
+@@ -41,7 +41,7 @@ public class GUIStatistics extends GUIComponent {
+ 
+   StatPanel statPanel;
+   JScrollPane jsp;
+-  private int nCycles, nInstructions, rawStalls, codeSize, WAWStalls, dividerStalls, memoryStalls;
++  private int nCycles, nInstructions, rawStalls, codeSize, WAWStalls, dividerStalls, memoryStalls, cacheMisses;
+   private float cpi;
+ 
+   GUIStatistics(CPU cpu, Memory memory, ConfigStore config) {
+@@ -58,7 +58,7 @@ public class GUIStatistics extends GUIComponent {
+   class StatPanel extends JPanel {
+     JList statList;
+     String [] statistics = {" Execution", " 0 Cycles", " 0 Instructions", " ", " Stalls", " 0 RAW Stalls", " 0 WAW Stalls",
+-                            " 0 WAR Stalls", " 0 Structural Stalls(Divider not available)", "0 Structural Stalls (Memory not available)", " 0 Branch Taken Stalls", " 0 Branch Misprediction Stalls",
++                            " 0 WAR Stalls", " 0 Structural Stalls(Divider not available)", "0 Structural Stalls (Memory not available)", " 0 Branch Taken Stalls", " 0 Branch Misprediction Stalls", " 0 Cache Misses",
+                             " Code Size", " 0 Bytes", "FPU info", "FCSR", "FCSRGroups", "FCSRMnemonics", "FCSRValues"
+                            };
+     StatPanel() {
+@@ -90,6 +90,7 @@ public class GUIStatistics extends GUIComponent {
+     WAWStalls = cpu.getWAWStalls();
+     dividerStalls = cpu.getStructuralStallsDivider();
+     memoryStalls = cpu.getStructuralStallsMemory();
++    cacheMisses = CPU.cache.getCacheMisses();
+   }
+ 
+   public void draw() {
+@@ -174,26 +175,29 @@ public class GUIStatistics extends GUIComponent {
+         label.setText(" 0 " + CurrentLocale.getString("BMS"));
+         return label;
+       case 12:
++        label.setText(" " + cacheMisses + " " + CurrentLocale.getString("CACHE_MISSES"));
++        return label;
++      case 13:
+         label.setText(" " + CurrentLocale.getString("CSIZE"));
+         label.setForeground(Color.red);
+         return label;
+-      case 13:
++      case 14:
+         label.setText(" " + codeSize + " " + CurrentLocale.getString("BYTES"));
+         return label;
+-      case 14:
++      case 15:
+         label.setText(" " + CurrentLocale.getString("FPUINFO"));
+         label.setForeground(Color.red);
+         return label;
+-      case 15:
++      case 16:
+         label.setText(" " + CurrentLocale.getString("FPUFCSR"));
+         return label;
+-      case 16:
++      case 17:
+         label.setText(" " + "    FCC       Cause EnablFlag RM");
+         return label;
+-      case 17:
++      case 18:
+         label.setText(" " + "7654321 0      VZOUIVZOUIVZOUI");
+         return label;
+-      case 18:
++      case 19:
+         label.setText(" " + cpu.getFCSR().getBinString());
+         return label;
+       }
+diff --git a/src/main/java/org/edumips64/utils/ConfigKey.java b/src/main/java/org/edumips64/utils/ConfigKey.java
+index eaa9428..834def3 100644
+--- a/src/main/java/org/edumips64/utils/ConfigKey.java
++++ b/src/main/java/org/edumips64/utils/ConfigKey.java
+@@ -39,7 +39,10 @@ public enum ConfigKey {
+     FP_TOWARDS_PLUS_INFINITY("TOWARDS_PLUS_INFINITY"),
+     FP_TOWARDS_MINUS_INFINITY("TOWARDS_MINUS_INFINITY"),
+     FP_LONG_DOUBLE_VIEW("LONGDOUBLEVIEW"),
+-    UI_FONT_SIZE("FONTSIZE");
++    UI_FONT_SIZE("FONTSIZE"),
++    SET_ASSOCIATIVITY("SET_ASSOCIATIVITY"),
++    BLOCK_SIZE("BLOCK_SIZE"),
++    SPLIT_CACHE("SPLIT_CACHE");
+     
+     private final String text;
+     
+diff --git a/src/main/java/org/edumips64/utils/ConfigStore.java b/src/main/java/org/edumips64/utils/ConfigStore.java
+index d15766a..fd1db0d 100644
+--- a/src/main/java/org/edumips64/utils/ConfigStore.java
++++ b/src/main/java/org/edumips64/utils/ConfigStore.java
+@@ -57,6 +57,10 @@ public abstract class ConfigStore {
+     ConfigStore.defaults.put(ConfigKey.RAW_COLOR, -16776961);          // Color.blue.brighter().getRGB());
+     ConfigStore.defaults.put(ConfigKey.SAME_IF_COLOR, -6908236);        // Color(150, 150, 180).getRGB());
+ 
++    ConfigStore.defaults.put(ConfigKey.SET_ASSOCIATIVITY, 16);
++    ConfigStore.defaults.put(ConfigKey.BLOCK_SIZE, 256);
++    ConfigStore.defaults.put(ConfigKey.SPLIT_CACHE, true);
++
+     // Simulation parameters.
+     ConfigStore.defaults.put(ConfigKey.FORWARDING, false);
+     ConfigStore.defaults.put(ConfigKey.WARNINGS, false);
+diff --git a/src/main/java/org/edumips64/utils/CurrentLocale.java b/src/main/java/org/edumips64/utils/CurrentLocale.java
+index c214ad1..ee80404 100644
+--- a/src/main/java/org/edumips64/utils/CurrentLocale.java
++++ b/src/main/java/org/edumips64/utils/CurrentLocale.java
+@@ -144,6 +144,7 @@ public class CurrentLocale {
+     en.put("STRUCTS_MEMNOTAVAILABLE", "Structural Stalls (Memory not available)");
+     en.put("BTS", "Branch Taken Stalls");
+     en.put("BMS", "Branch Misprediction Stalls");
++    en.put("CACHE_MISSES", "Cache Misses");
+     en.put("CSIZE", "Code size");
+     en.put("Config.APPEARANCE", "Appearance");
+     en.put("Config.BEHAVIOR", "Behavior");
+@@ -362,6 +363,7 @@ public class CurrentLocale {
+     it.put("STRUCTS_MEMNOTAVAILABLE", "Stalli strutturali (Memoria non disponibile)");
+     it.put("BTS", "Stalli 'Branch Taken'");
+     it.put("BMS", "Stalli 'Branch Misprediction'");
++    it.put("CACHE_MISSES", "Cache Misses");
+     it.put("CSIZE", "Dimensione del codice");
+     it.put("Config.APPEARANCE", "Aspetto");
+     it.put("Config.BEHAVIOR", "Comportamento");

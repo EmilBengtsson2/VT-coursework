@@ -1,0 +1,58 @@
+THIS DOCUMENT CONTAINS INFORMATION ABOUT HOW TO COMPILE AND RUN THE VARIOUS PROGRAMS,
+AND ALSO ABOUT THE FORMAT WHICH THE INPUT FILES MUST HAVE.
+
+1. COMPILING THE PROGRAMS
+The various programs can be compiled using the Makefile in this directory. (This requires an installed copy of GNU Make)
+To compile all the programs, type "make all" or "make".
+Each program can also be compiled separately by typing "make <name_of_c_file>" (read the Makefile for clarification)
+
+2. FORMAT OF INPUT FILES AND HOW TO CREATE THEM
+Input files for testing the matrix-matrix multiplication program 
+can be created by running the program "./create_test_matrix_matrix_file".
+
+    2.1. INPUT FILE FOR MATRIX-MATRIX MULTIPLICATION
+    "./create_test_matrix_matrix_file" creates one file named "matrix1.txt" with information about two matrices.
+    The file is formatted like this:
+
+        2 3
+        1 2 3
+        4 5 6
+
+        3 2
+        1 2
+        3 4
+        5 6
+
+    Where the first line contains the number of rows and columns of the first matrix,
+    and the fourth line contains the number of rows and columns of the second matrix.
+    (If the first matrix does not have two rows, the information about the second
+    matrix will obviously not be on line four)
+
+    !!!!! THE INPUT FILE FOR THE MATRIX-MATRIX MULTIPLICATION PROGRAM HAS TO BE FORMATTED LIKE THIS FOR THE PROGRAM TO WORK !!!!!
+
+3. RUNNING THE PROGRAM
+How to run the program that generates input files is described in section 2.
+
+    3.1 MATRIX-MATRIX MULTIPLICATION
+    The matrix-matrix multiplication program can be compiled as described in section 1.
+    When the program is compiled, it can be run by typing:
+
+        ./parallel_matrix_matrix_multiply 1
+
+    Where the number after the program name indicates how many threads should be used by the program.
+    It is important that there exists a file named "matrix1.txt" in the same directory as the program for it to run.
+    It must also be formatted correctly (look at section 2) for the program to behave correctly.
+
+4. OUTPUT FILES
+The matrix-matrix multiplication program creates 7 output files; one for each type of parallel matrix-matrix multiplication
+it carries out. The files are named "<name>_matrix_matrix_result.txt", where <name> is the name I gave the corresponding
+type of matrix-matrix multiplication. <name> can be "ijk", "jik", "ikj", "jki", "kij", "kji" and "nested".
+All of the files are formatted like this:
+
+    1 2 3 2 5 6
+    3 2 5 1 2 5
+    5 6 3 2 1 4
+    5 3 2 1 4 5
+    6 3 2 5 4 5
+
+Where the whole file consists of just the resulting matrix from the multiplication.

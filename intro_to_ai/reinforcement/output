@@ -1,0 +1,121 @@
+Starting on 9-29 at 18:11:08
+
+Question q1
+===========
+
+*** FAIL: test_cases/q1/1-tinygrid.test
+***     Q-Values at iteration 0 for action exit are NOT correct.
+***        Student solution:
+***      q_values_k_0_action_exit: """
+***                 0.0000
+***                illegal
+***                 0.0000
+***     """
+***     
+***     
+***        Correct solution:
+***      q_values_k_0_action_exit: """
+***               -10.0000
+***                illegal
+***                10.0000
+***     """
+***     
+***     
+***     
+***     For more details to help you debug, see test output file test_cases/q1/1-tinygrid.test_output
+***     
+***     
+*** FAIL: test_cases/q1/2-tinygrid-noisy.test
+***     Q-Values at iteration 0 for action exit are NOT correct.
+***        Student solution:
+***      q_values_k_0_action_exit: """
+***                 0.0000
+***                illegal
+***                 0.0000
+***     """
+***     
+***     
+***        Correct solution:
+***      q_values_k_0_action_exit: """
+***               -10.0000
+***                illegal
+***                10.0000
+***     """
+***     
+***     
+***     
+***     For more details to help you debug, see test output file test_cases/q1/2-tinygrid-noisy.test_output
+***     
+***     
+*** FAIL: test_cases/q1/3-bridge.test
+***     Q-Values at iteration 0 for action exit are NOT correct.
+***        Student solution:
+***      q_values_k_0_action_exit: """
+***             __________       0.0000   __________
+***                 0.0000      illegal       0.0000
+***                 0.0000      illegal       0.0000
+***                 0.0000      illegal       0.0000
+***                 0.0000      illegal       0.0000
+***                 0.0000      illegal       0.0000
+***             __________       0.0000   __________
+***     """
+***     
+***     
+***        Correct solution:
+***      q_values_k_0_action_exit: """
+***             __________      10.0000   __________
+***              -100.0000      illegal    -100.0000
+***              -100.0000      illegal    -100.0000
+***              -100.0000      illegal    -100.0000
+***              -100.0000      illegal    -100.0000
+***              -100.0000      illegal    -100.0000
+***             __________       1.0000   __________
+***     """
+***     
+***     
+***     
+***     For more details to help you debug, see test output file test_cases/q1/3-bridge.test_output
+***     
+***     
+*** FAIL: test_cases/q1/4-discountgrid.test
+***     Q-Values at iteration 0 for action exit are NOT correct.
+***        Student solution:
+***      q_values_k_0_action_exit: """
+***                 0.0000      illegal       0.0000      illegal      illegal
+***                 0.0000      illegal   __________      illegal      illegal
+***                 0.0000      illegal       0.0000      illegal      illegal
+***                 0.0000      illegal   __________   __________      illegal
+***                 0.0000      illegal      illegal      illegal      illegal
+***     """
+***     
+***     
+***        Correct solution:
+***      q_values_k_0_action_exit: """
+***               -10.0000      illegal      10.0000      illegal      illegal
+***               -10.0000      illegal   __________      illegal      illegal
+***               -10.0000      illegal       1.0000      illegal      illegal
+***               -10.0000      illegal   __________   __________      illegal
+***               -10.0000      illegal      illegal      illegal      illegal
+***     """
+***     
+***     
+***     
+***     For more details to help you debug, see test output file test_cases/q1/4-discountgrid.test_output
+***     
+***     
+*** Tests failed.
+
+### Question q1: 0/6 ###
+
+
+Finished at 18:11:08
+
+Provisional grades
+==================
+Question q1: 0/6
+------------------
+Total: 0/6
+
+Your grades are NOT yet registered.  To register your grades, make sure
+to follow your instructor's guidelines to receive credit on your project.
+

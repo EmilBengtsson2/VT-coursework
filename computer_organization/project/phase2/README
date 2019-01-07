@@ -1,0 +1,51 @@
+DESCRIPTION
+
+This program is simulating a MIPS architecture, it can be configured to run with a number of different
+branch prediction techniques: no prediction, predict branch not taken, predict branch taken,
+a 2-bit local predictor, or a (2,1) correlating predictor. For more detailed information, look at the
+documentation for the edumips64 project (https://www.edumips.org/).
+
+REQUIREMENTS
+
+If you can compile and run the baseline simulator with bazel 
+(https://github.com/lupino3/edumips64/blob/master/docs/developer-guide.md), there should be no problems.
+
+
+BUILDING AND EXECUTING THE PROGRAM
+
+First, make sure you are executing the following commands in the ./edumips64 directory.
+
+Then, build the jar file:
+bazel build --workspace_status_command=utils/bazel-stamp.sh --stamp //src/main/java/org/edumips64:standalone-jar
+
+Then, run the jar file:
+java -jar bazel-genfiles/src/main/java/org/edumips64/edumips64-1.2.5.jar
+
+Then, load a program from the menu in the simulator and run it. The benchmark programs are in the folder 
+named "phase2-Benchmark".
+
+
+CONFIGURATIONS
+
+The option to decide which predictor that is to be used has not been added to the UI. 
+Instead a line must be changed in ./edumips64/src/main/java/org/edumips64/utils/ConfigStore.java. The line 
+that should be changed looks like this:
+
+ConfigStore.defaults.put(ConfigKey.BRANCH_PREDICTION, 1);
+
+The "1" can be changed to another number to enable another kind of branch prediction.
+Which numbers stand for which type of branch prediction are shown here:
+
+    1 = flush pipeline
+    2 = predict not taken
+    3 = predict taken
+    4 = 2-bit local predictor
+    5 = (2,1) correlating predictor
+
+This is also shown in some comments in ./edumips64/src/main/java/org/edumips64/utils/ConfigStore.java.
+
+
+CHANGELOG
+
+To see which changes have been made to the baseline simulator, either type "git diff" in the ./edumips64 
+directory or look at the file named changelog (./changelog).

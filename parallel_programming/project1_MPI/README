@@ -1,0 +1,106 @@
+THIS DOCUMENT CONTAINS INFORMATION ABOUT HOW TO COMPILE AND RUN THE VARIOUS PROGRAMS,
+AND ALSO ABOUT THE FORMAT WHICH THE INPUT FILES MUST HAVE.
+
+1. COMPILING THE PROGRAMS
+The various programs can be compiled using the Makefile in this directory. (This requires an installed copy of GNU Make)
+To compile the programs should be compiled with mpicc, type "make parallel",
+and to compile the programs that can be compiled with gcc, type "make all" or "make".
+Each program can also be compiled separately by typing "make <name_of_c_file>" (read the Makefile for clarification)
+
+2. FORMAT OF INPUT FILES AND HOW TO CREATE THEM
+Input files for testing the matrix-matrix and matrix-vector multiplication programs 
+can be created by running the programs "./create_test_matrix_matrix_file" and "./create_test_matrix_vector_pair".
+
+    2.1. INPUT FILES FOR MATRIX-VECTOR MULTIPLICATION
+    "./create_test_matrix_vector_pair" creates two files named "matrix.txt" and "vector.txt" with information
+    about the created vector and matrix respectively.
+    "matrix.txt" is formatted like this:
+
+        5 6
+        1 2 3 2 5 6
+        3 2 5 1 2 5
+        5 6 3 2 1 4
+        5 3 2 1 4 5
+        6 3 2 5 4 5
+
+    Where the first line contains the number of rows and columns of the matrix.
+    "vector.txt" is formatted like this:
+
+        1 6
+        1 2 3 6 5 4
+
+    Where the first line contains the number of rows and columns of the vector.
+
+    !!!!! THE INPUT FILES FOR THE MATRIX-VECTOR MULTIPLICATION PROGRAM HAS TO BE FORMATTED LIKE THIS FOR THE PROGRAM TO WORK !!!!!
+
+    2.2. INPUT FILE FOR MATRIX-MATRIX MULTIPLICATION
+    "./create_test_matrix_matrix_file" creates one file named "matrix1.txt" with information about two matrices.
+    The file is formatted like this:
+
+        2 3
+        1 2 3
+        4 5 6
+
+        3 2
+        1 2
+        3 4
+        5 6
+
+    Where the first line contains the number of rows and columns of the first matrix,
+    and the fourth line contains the number of rows and columns of the second matrix.
+    (If the first matrix does not have two rows, the information about the second
+    matrix will obviously not be on line four)
+
+    !!!!! THE INPUT FILE FOR THE MATRIX-MATRIX MULTIPLICATION PROGRAM HAS TO BE FORMATTED LIKE THIS FOR THE PROGRAM TO WORK !!!!!
+
+3. RUNNING THE PROGRAMS
+How to run the programs that generate input files is described in section 2.
+All parallel programs are run with mpiexec.
+
+    3.1. MATRIX-VECTOR MULTIPLICATION
+    The matrix vector multiplication program can be compiled as described in section 1.
+    When the program is compiled, it can be run by typing:
+
+        mpiexec -n 1 parallel_matrix_vector_multiply
+
+    Where the number after the -n indicates how many copies of the program are run.
+    It is important that there exists one file named "matrix.txt" and one file named "vector.txt" in the same
+    directory as the program for it to run. They must also be formatted correctly (look at section 2)
+    for the program to behave correctly.
+
+    3.2 MATRIX-MATRIX MULTIPLICATION
+    The matrix vector multiplication program can be compiled as described in section 1.
+    When the program is compiled, it can be run by typing:
+
+        mpiexec -n 1 parallel_matrix_matrix_multiply
+
+    Where the number after the -n indicates how many copies of the program are run.
+    It is important that there exists a file named "matrix1.txt" in the same directory as the program for it to run.
+    It must also be formatted correctly (look at section 2) for the program to behave correctly.
+
+    3.3. SEQUENTIAL MATRIX-VECTOR AND MATRIX-MATRIX MULTIPLICATION
+    To perform sequential matrix-vector and matrix-matrix multiplication you can run the
+    parallel versions of these algorithms on only one process (-n 1). How to run the parallel verisions
+    of the programs is described in section 3.1 and 3.2.
+
+4. OUTPUT FILES
+Both programs create an output file with the result of the matrix-vector or matrix-matrix multiplication
+in it. The output file from the matrix-vector multiplication program is named "matrix_vector_result.txt"
+and the output file from the matrix-matrix multiplication program is named "matrix_matrix_result.txt".
+The files are formatted like this:
+
+    1 2 3 2 5 6
+    3 2 5 1 2 5
+    5 6 3 2 1 4
+    5 3 2 1 4 5
+    6 3 2 5 4 5
+
+or this:
+
+    6
+    5
+    4
+    5
+    5
+
+Where the whole file consists of just the resulting matrix or vector from the multiplication.
